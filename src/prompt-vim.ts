@@ -380,7 +380,7 @@ export function createPromptVim(
   }
 
   const state = createVimState({
-    enabled: () => Boolean(promptEditor()),
+    enabled: input.enabled,
     initial: () => input.initialMode,
   })
   let clipboardRegister: VimRegister = null
@@ -468,8 +468,14 @@ export function createPromptVim(
       if (action === "page-up") api.keymap.dispatchCommand("session.page.up")
     },
     jump(action) {
-      if (action === "top") textarea().gotoBufferHome()
-      if (action === "bottom") textarea().gotoBufferEnd()
+      const editor = textarea()
+      if (action === "high" || action === "middle" || action === "low" || editor.plainText.length > 0) {
+        if (action === "top") editor.gotoBufferHome()
+        if (action === "bottom") editor.gotoBufferEnd()
+        return
+      }
+      if (action === "top") api.keymap.dispatchCommand("session.first")
+      if (action === "bottom") api.keymap.dispatchCommand("session.last")
     },
     navigate: () => {},
     autocomplete: () => false,
@@ -563,6 +569,7 @@ export function createPromptVim(
   return {
     dispose,
     applyCursorStyle,
+    active: () => Boolean(promptEditor()),
     indicator,
     pending: state.pending,
     isVisual: state.isVisual,

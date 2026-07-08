@@ -1,13 +1,17 @@
 /** @jsxImportSource @opentui/solid */
 
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import type { KeyEvent, Renderable, TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { TextAttributes } from "@opentui/core"
+import type { Binding, KeyLike } from "@opentui/keymap"
 import { createEffect, createSignal, Show, type Accessor } from "solid-js"
 import { createPromptVim } from "./prompt-vim"
 
 const PLUGIN_ID = "ocv.vim"
 const COMMAND_TOGGLE = "ocv.vim.toggle"
 const KV_ENABLED = "ocv.vim.enabled"
+const NORMAL_LEADER_TOKEN = "ocv-vim-leader"
+
+type NormalBinding = Binding<Renderable, KeyEvent> & { cmd: string }
 
 type Options = {
   enabled: boolean
@@ -17,16 +21,74 @@ type Options = {
   insertAfterSubmit: boolean
   systemClipboardRegister: boolean
   langmap?: Record<string, string>
+  normalLeader?: string
+  normalBindings: NormalBinding[]
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+function nonEmptyString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined
+}
+
+function commandName(value: string) {
+  return value.includes(".") ? value : value.replaceAll("_", ".")
+}
+
+function normalBindingKey(key: KeyLike, normalLeader: string | undefined): KeyLike {
+  if (!normalLeader || typeof key !== "string") return key
+  return key.replaceAll("<leader>", `<${NORMAL_LEADER_TOKEN}>`)
+}
+
+function bindingFromValue(command: string, value: unknown, normalLeader: string | undefined): NormalBinding[] {
+  const key = nonEmptyString(value)
+  if (key) return key === "none" ? [] : [{ key: normalBindingKey(key, normalLeader), cmd: command }]
+  if (!Array.isArray(value)) {
+    if (!isRecord(value)) return []
+    const itemKey = nonEmptyString(value.key)
+    if (!itemKey || itemKey === "none") return []
+    return [
+      {
+        key: normalBindingKey(itemKey, normalLeader),
+        cmd: command,
+        ...(typeof value.preventDefault === "boolean" ? { preventDefault: value.preventDefault } : {}),
+        ...(typeof value.desc === "string" ? { desc: value.desc } : {}),
+      },
+    ]
+  }
+  return value.flatMap((item) => bindingFromValue(command, item, normalLeader))
+}
+
+function readNormalBindings(options: Record<string, unknown>, normalLeader: string | undefined) {
+  const direct = isRecord(options.normal_keybinds)
+    ? Object.entries(options.normal_keybinds).flatMap(([key, value]) => {
+        if (typeof value === "string") return [{ key: normalBindingKey(key, normalLeader), cmd: commandName(value) }]
+        if (!isRecord(value)) return []
+        const command = nonEmptyString(value.command) ?? nonEmptyString(value.cmd)
+        if (!command) return []
+        return [
+          {
+            key: normalBindingKey(key, normalLeader),
+            cmd: commandName(command),
+            ...(typeof value.preventDefault === "boolean" ? { preventDefault: value.preventDefault } : {}),
+            ...(typeof value.desc === "string" ? { desc: value.desc } : {}),
+          },
+        ]
+      })
+    : []
+  const keybinds = isRecord(options.keybinds) && isRecord(options.keybinds["vim.normal"]) ? options.keybinds["vim.normal"] : undefined
+  const scoped = keybinds
+    ? Object.entries(keybinds).flatMap(([name, value]) => (name === "leader" ? [] : bindingFromValue(commandName(name), value, normalLeader)))
+    : []
+  return [...direct, ...scoped]
+}
+
 function readOptions(input: unknown): Options {
   const options = isRecord(input) ? input : {}
   const enabled = typeof options.enabled === "boolean" ? options.enabled : true
-  const toggleKey = typeof options.toggle_key === "string" && options.toggle_key.trim() ? options.toggle_key : undefined
+  const toggleKey = nonEmptyString(options.toggle_key)
   const indicator = options.indicator === false || options.indicator === "off" ? false : true
   const enterSubmit = options.enter_submit === true || options.vim_enter_submit === true
   const insertAfterSubmit = options.insert_after_submit === true || options.vim_insert_after_submit === true
@@ -40,6 +102,8 @@ function readOptions(input: unknown): Options {
         ),
       )
     : undefined
+  const keybinds = isRecord(options.keybinds) && isRecord(options.keybinds["vim.normal"]) ? options.keybinds["vim.normal"] : undefined
+  const normalLeader = nonEmptyString(options.normal_leader) ?? nonEmptyString(options.vim_normal_leader) ?? nonEmptyString(keybinds?.leader)
   return {
     enabled,
     toggleKey,
@@ -48,6 +112,8 @@ function readOptions(input: unknown): Options {
     insertAfterSubmit,
     systemClipboardRegister,
     langmap,
+    normalLeader,
+    normalBindings: readNormalBindings(options, normalLeader),
   }
 }
 
@@ -106,6 +172,10 @@ const tui: TuiPlugin = async (api, rawOptions) => {
     })
   }
 
+  if (options.normalLeader && options.normalBindings.length > 0) {
+    api.keymap.registerToken({ name: NORMAL_LEADER_TOKEN, key: options.normalLeader })
+  }
+
   api.keymap.registerLayer({
     priority: 100,
     commands: [
@@ -128,6 +198,14 @@ const tui: TuiPlugin = async (api, rawOptions) => {
       ...prompt.bindings,
     ],
   })
+
+  if (options.normalBindings.length > 0) {
+    api.keymap.registerLayer({
+      priority: 200,
+      enabled: () => enabled() && prompt.mode() === "normal",
+      bindings: options.normalBindings,
+    })
+  }
 
   api.slots.register({
     order: 100,
