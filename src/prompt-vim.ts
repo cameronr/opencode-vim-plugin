@@ -1,20 +1,29 @@
 import type { KeyEvent, Renderable, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { Binding, CommandContext } from "@opentui/keymap"
-import type { TextareaRenderable } from "@opentui/core"
+import { RGBA, type TextareaRenderable } from "@opentui/core"
 import { createVimHandler } from "./vim/vim-handler"
 import { useVimIndicator } from "./vim/vim-indicator"
 import { createVimState, type VimMode, type VimRegister } from "./vim/vim-state"
 
 type VimContext = CommandContext<Renderable, KeyEvent>
 
+const PROMPT_RENDER_PATCH = Symbol("ocv.vim.prompt.render.patch")
+
+type PromptRenderPatch = {
+  original: TextareaLike["render"]
+  patched: TextareaLike["render"]
+}
+
 type TextareaLike = TextareaRenderable & {
   focused?: boolean
+  [PROMPT_RENDER_PATCH]?: PromptRenderPatch
 }
 
 const COMMAND_KEY = "ocv.vim.key"
 const COMMAND_QUIT = "ocv.vim.quit"
 const COMMAND_PALETTE = "command.palette.show"
 const COMMAND_EXIT = "app.exit"
+const YANK_FLASH_MS = 70
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -71,6 +80,11 @@ function vimEvent(event: KeyEvent) {
 
 function hasModifier(event: { ctrl?: boolean; meta?: boolean; super?: boolean }) {
   return !!event.ctrl || !!event.meta || !!event.super
+}
+
+function selectedForeground(api: TuiPluginApi, bg: RGBA) {
+  if (api.theme.current.background.a > 0) return api.theme.current.background
+  return 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b > 0.5 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
 }
 
 function clipboardRead() {
@@ -310,22 +324,53 @@ export function createPromptVim(
     return currentPromptEditor()
   }
 
+  const patchedEditors = new Set<TextareaLike>()
+
+  function patchPromptEditor(editor: TextareaLike) {
+    if (editor[PROMPT_RENDER_PATCH]) return
+    const original = editor.render
+    const patched: TextareaLike["render"] = (buffer, deltaTime) => {
+      original.call(editor, buffer, deltaTime)
+      if (!input.enabled()) return
+      if (!(state.mode() === "normal" || state.isVisual())) return
+      if (!editor.focused) return
+      const cursor = editor.visualCursor
+      if (cursor.visualRow < 0 || cursor.visualRow >= editor.height) return
+      if (cursor.visualCol < 0 || cursor.visualCol >= editor.width) return
+      const offset = ((editor.y + cursor.visualRow) * buffer.width + editor.x + cursor.visualCol) * 4
+      buffer.buffers.fg.set(selectedForeground(api, api.theme.current.text).buffer.subarray(0, 4), offset)
+      buffer.buffers.bg.set(api.theme.current.text.buffer.subarray(0, 4), offset)
+    }
+    editor[PROMPT_RENDER_PATCH] = { original, patched }
+    editor.render = patched
+    patchedEditors.add(editor)
+  }
+
   function applyCursorStyle() {
     const editor = currentPromptEditor()
     if (!editor) return
+    patchPromptEditor(editor)
+    const visual = state.isVisual()
+    editor.selectionBg = visual ? api.theme.current.secondary : undefined
+    editor.selectionFg = visual ? selectedForeground(api, api.theme.current.secondary) : undefined
     if (!input.enabled()) {
+      editor.showCursor = true
       editor.cursorStyle = { style: "line", blinking: true }
       return
     }
     if (state.isInsert()) {
+      editor.showCursor = true
       editor.cursorStyle = { style: "line", blinking: true }
       return
     }
     if (state.isReplace()) {
+      editor.showCursor = true
       editor.cursorStyle = { style: "underline", blinking: false }
       return
     }
     editor.cursorStyle = { style: "block", blinking: false }
+    editor.showCursor = false
+    editor.requestRender()
   }
 
   function textarea() {
@@ -340,6 +385,9 @@ export function createPromptVim(
   })
   let clipboardRegister: VimRegister = null
   let clipboardText: string | undefined
+  let flash = 0
+  let flashSpan: { start: number; end: number } | undefined
+  let flashTimer: ReturnType<typeof setTimeout> | undefined
 
   function register() {
     if (!input.systemClipboardRegister) return state.register()
@@ -363,13 +411,54 @@ export function createPromptVim(
     state.setMode(input.insertAfterSubmit ? "insert" : "normal")
   }
 
+  function flashYank(span: { start: number; end: number }) {
+    const editor = promptEditor()
+    if (!editor || span.end <= span.start) return
+    flash++
+    flashSpan = span
+    const id = flash
+    const cursor = editor.cursorOffset
+    editor.editorView.setSelection(span.start, span.end, editor.selectionBg, editor.selectionFg)
+    editor.cursorOffset = cursor
+    editor.getLayoutNode().markDirty()
+    api.renderer.requestRender()
+    if (flashTimer) clearTimeout(flashTimer)
+    flashTimer = setTimeout(() => {
+      if (editor.isDestroyed) return
+      if (id !== flash) return
+      if (state.isVisual()) {
+        flashSpan = undefined
+        return
+      }
+      const selection = editor.editorView.getSelection()
+      if (!selection) {
+        flashSpan = undefined
+        return
+      }
+      if (selection.start !== span.start || selection.end !== span.end) {
+        flashSpan = undefined
+        return
+      }
+      flashSpan = undefined
+      editor.clearSelection()
+      editor.getLayoutNode().markDirty()
+      api.renderer.requestRender()
+    }, YANK_FLASH_MS)
+  }
+
   const handler = createVimHandler({
     enabled: () => Boolean(promptEditor()),
     state,
     textarea,
     register,
     setRegister,
+    pasteOverSelection() {
+      const selection = textarea().editorView.getSelection()
+      if (!selection) return false
+      return !flashSpan || selection.start !== flashSpan.start || selection.end !== flashSpan.end
+    },
     submit: submitPrompt,
+    flash: flashYank,
     scroll(action) {
       if (action === "line-down") api.keymap.dispatchCommand("session.line.down")
       if (action === "line-up") api.keymap.dispatchCommand("session.line.up")
@@ -443,7 +532,36 @@ export function createPromptVim(
     preventDefault: false,
   }))
 
+  function dispose() {
+    if (flashTimer) {
+      clearTimeout(flashTimer)
+      flashTimer = undefined
+    }
+    flash++
+    for (const editor of patchedEditors) {
+      const patch = editor[PROMPT_RENDER_PATCH]
+      if (!patch) continue
+      if (editor.render === patch.patched) editor.render = patch.original
+      delete editor[PROMPT_RENDER_PATCH]
+      if (!editor.isDestroyed) {
+        if (flashSpan) {
+          const selection = editor.editorView.getSelection()
+          if (selection?.start === flashSpan.start && selection.end === flashSpan.end) editor.clearSelection()
+        }
+        editor.selectionBg = undefined
+        editor.selectionFg = undefined
+        editor.showCursor = true
+        editor.cursorStyle = { style: "line", blinking: true }
+        editor.getLayoutNode().markDirty()
+      }
+    }
+    patchedEditors.clear()
+    flashSpan = undefined
+    api.renderer.requestRender()
+  }
+
   return {
+    dispose,
     applyCursorStyle,
     indicator,
     pending: state.pending,

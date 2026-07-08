@@ -93,6 +93,7 @@ const tui: TuiPlugin = async (api, rawOptions) => {
     systemClipboardRegister: options.systemClipboardRegister,
     langmap: () => options.langmap,
   })
+  api.lifecycle.onDispose(prompt.dispose)
 
   function toggle() {
     const next = !enabled()
