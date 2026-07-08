@@ -3,7 +3,7 @@ import type { Binding, CommandContext } from "@opentui/keymap"
 import type { TextareaRenderable } from "@opentui/core"
 import { createVimHandler } from "./vim/vim-handler"
 import { useVimIndicator } from "./vim/vim-indicator"
-import { createVimState, type VimMode } from "./vim/vim-state"
+import { createVimState, type VimMode, type VimRegister } from "./vim/vim-state"
 
 type VimContext = CommandContext<Renderable, KeyEvent>
 
@@ -71,6 +71,32 @@ function vimEvent(event: KeyEvent) {
 
 function hasModifier(event: { ctrl?: boolean; meta?: boolean; super?: boolean }) {
   return !!event.ctrl || !!event.meta || !!event.super
+}
+
+function clipboardRead() {
+  const command =
+    process.platform === "darwin"
+      ? ["pbpaste"]
+      : process.platform === "win32"
+        ? ["powershell.exe", "-NoProfile", "-Command", "Get-Clipboard -Raw"]
+        : ["sh", "-lc", "wl-paste -n 2>/dev/null || xclip -selection clipboard -out 2>/dev/null || xsel --clipboard --output 2>/dev/null"]
+  const result = Bun.spawnSync(command, { stdout: "pipe", stderr: "ignore" })
+  if (result.exitCode !== 0) return
+  return result.stdout.toString()
+}
+
+function clipboardWrite(text: string) {
+  const command =
+    process.platform === "darwin"
+      ? `printf %s \"$OPENCODE_VIM_CLIPBOARD\" | pbcopy`
+      : process.platform === "win32"
+        ? `Set-Clipboard -Value $env:OPENCODE_VIM_CLIPBOARD`
+        : `printf %s \"$OPENCODE_VIM_CLIPBOARD\" | { wl-copy 2>/dev/null || xclip -selection clipboard -in 2>/dev/null || xsel --clipboard --input 2>/dev/null; }`
+  Bun.spawnSync(process.platform === "win32" ? ["powershell.exe", "-NoProfile", "-Command", command] : ["sh", "-lc", command], {
+    stdout: "ignore",
+    stderr: "ignore",
+    env: { ...process.env, OPENCODE_VIM_CLIPBOARD: text },
+  })
 }
 
 const normalKeys = [
@@ -260,7 +286,14 @@ function unique<Value>(items: readonly Value[]) {
 
 export function createPromptVim(
   api: TuiPluginApi,
-  input: { enabled: () => boolean; initialMode?: VimMode; langmap?: () => Record<string, string> | undefined },
+  input: {
+    enabled: () => boolean
+    initialMode?: VimMode
+    enterSubmit?: boolean
+    insertAfterSubmit?: boolean
+    systemClipboardRegister?: boolean
+    langmap?: () => Record<string, string> | undefined
+  },
 ) {
   function currentPromptEditor() {
     if (api.ui.dialog.open) return
@@ -305,12 +338,38 @@ export function createPromptVim(
     enabled: () => Boolean(promptEditor()),
     initial: () => input.initialMode,
   })
+  let clipboardRegister: VimRegister = null
+  let clipboardText: string | undefined
+
+  function register() {
+    if (!input.systemClipboardRegister) return state.register()
+    const text = clipboardRead()
+    if (text === undefined) return clipboardRegister ?? state.register()
+    if (clipboardRegister && text === clipboardText) return clipboardRegister
+    return { text, linewise: false }
+  }
+
+  function setRegister(next: VimRegister, notify = false) {
+    state.setRegister(next)
+    if (!input.systemClipboardRegister || !next) return
+    clipboardRegister = next
+    clipboardText = next.text
+    clipboardWrite(next.text)
+    if (notify) api.ui.toast({ message: "Copied to clipboard", variant: "info" })
+  }
+
+  function submitPrompt() {
+    textarea().submit()
+    state.setMode(input.insertAfterSubmit ? "insert" : "normal")
+  }
 
   const handler = createVimHandler({
     enabled: () => Boolean(promptEditor()),
     state,
     textarea,
-    submit: () => textarea().submit(),
+    register,
+    setRegister,
+    submit: submitPrompt,
     scroll(action) {
       if (action === "line-down") api.keymap.dispatchCommand("session.line.down")
       if (action === "line-up") api.keymap.dispatchCommand("session.line.up")
@@ -356,6 +415,14 @@ export function createPromptVim(
       run(ctx: VimContext) {
         if (!promptEditor()) return false
         const event = vimEvent(ctx.event)
+        if ((state.isInsert() || state.isReplace()) && event.name === "return" && !hasModifier(event)) {
+          event.preventDefault()
+          event.stopPropagation()
+          if (input.enterSubmit) submitPrompt()
+          else textarea().insertText("\n")
+          applyCursorStyle()
+          return true
+        }
         if (state.mode() === "normal" && event.name === ":" && !hasModifier(event)) {
           event.preventDefault()
           event.stopPropagation()

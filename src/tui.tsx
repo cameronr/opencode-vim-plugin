@@ -13,6 +13,9 @@ type Options = {
   enabled: boolean
   toggleKey?: string
   indicator: boolean
+  enterSubmit: boolean
+  insertAfterSubmit: boolean
+  systemClipboardRegister: boolean
   langmap?: Record<string, string>
 }
 
@@ -25,14 +28,27 @@ function readOptions(input: unknown): Options {
   const enabled = typeof options.enabled === "boolean" ? options.enabled : true
   const toggleKey = typeof options.toggle_key === "string" && options.toggle_key.trim() ? options.toggle_key : undefined
   const indicator = options.indicator === false || options.indicator === "off" ? false : true
-  const langmap = isRecord(options.langmap)
+  const enterSubmit = options.enter_submit === true || options.vim_enter_submit === true
+  const insertAfterSubmit = options.insert_after_submit === true || options.vim_insert_after_submit === true
+  const systemClipboardRegister =
+    options.system_clipboard_register === true || options.vim_system_clipboard_register === true
+  const langmapInput = isRecord(options.langmap) ? options.langmap : isRecord(options.vim_langmap) ? options.vim_langmap : undefined
+  const langmap = langmapInput
     ? Object.fromEntries(
-        Object.entries(options.langmap).filter(
+        Object.entries(langmapInput).filter(
           (entry): entry is [string, string] => entry[0].length === 1 && typeof entry[1] === "string" && entry[1].length === 1,
         ),
       )
     : undefined
-  return { enabled, toggleKey, indicator, langmap }
+  return {
+    enabled,
+    toggleKey,
+    indicator,
+    enterSubmit,
+    insertAfterSubmit,
+    systemClipboardRegister,
+    langmap,
+  }
 }
 
 function Status(props: {
@@ -72,6 +88,9 @@ const tui: TuiPlugin = async (api, rawOptions) => {
   const prompt = createPromptVim(api, {
     enabled,
     initialMode: initialEnabled ? "normal" : "insert",
+    enterSubmit: options.enterSubmit,
+    insertAfterSubmit: options.insertAfterSubmit,
+    systemClipboardRegister: options.systemClipboardRegister,
     langmap: () => options.langmap,
   })
 
