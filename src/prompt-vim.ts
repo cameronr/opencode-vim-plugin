@@ -478,6 +478,7 @@ export function createPromptVim(
       if (action === "bottom") api.keymap.dispatchCommand("session.last")
     },
     navigate: () => {},
+    copySearchStart: () => false,
     autocomplete: () => false,
     langmap: input.langmap,
   })

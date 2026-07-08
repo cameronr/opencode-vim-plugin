@@ -17,7 +17,8 @@
     "build": "bun run script/build.ts",
     "typecheck": "tsc --noEmit",
     "check:keymap": "bun run script/check-keymap.ts",
-    "check": "bun run typecheck && bun run check:keymap && bun run build"
+    "check:adapter": "bun run script/check-adapter.ts",
+    "check": "bun run typecheck && bun run check:keymap && bun run build && bun run check:adapter"
   },
   "engines": {
     "opencode": ">=1.17.9"
