@@ -12,14 +12,14 @@ const bracketPairs = new Map([
 ])
 const bracketClosers = new Map(Array.from(bracketPairs, ([open, close]) => [close, open]))
 
-function lineStart(text: string, offset: number) {
+export function lineStart(text: string, offset: number) {
   if (offset <= 0) return 0
   const index = text.lastIndexOf("\n", offset - 1)
   if (index === -1) return 0
   return index + 1
 }
 
-function lineEnd(text: string, offset: number) {
+export function lineEnd(text: string, offset: number) {
   const index = text.indexOf("\n", offset)
   if (index === -1) return text.length
   return index
@@ -185,6 +185,33 @@ export function clampCursorToLine(textarea: TextareaRenderable) {
   if (textarea.cursorOffset > last) textarea.cursorOffset = last
 }
 
+export function alignVisualColumn(textarea: TextareaRenderable, column: number) {
+  const view = textarea.editorView as {
+    getVisualCursor?: () => { visualRow: number; visualCol: number; offset: number }
+    setCursorByOffset?: (offset: number) => void
+  }
+  if (typeof view?.getVisualCursor !== "function") return
+
+  let cursor = view.getVisualCursor()
+  const row = cursor.visualRow
+  const text = textarea.plainText
+
+  while (cursor.visualCol < column) {
+    const next = textarea.cursorOffset + 1
+    if (next > lineLast(text, textarea.cursorOffset)) break
+
+    if (typeof view.setCursorByOffset === "function") view.setCursorByOffset(next)
+    else textarea.cursorOffset = next
+
+    const moved = view.getVisualCursor()
+    if (moved.offset === cursor.offset || moved.visualRow !== row) {
+      textarea.cursorOffset = cursor.offset
+      break
+    }
+    cursor = moved
+  }
+}
+
 export function moveRight(textarea: TextareaRenderable) {
   const text = textarea.plainText
   const last = lineLast(text, textarea.cursorOffset)
@@ -199,6 +226,93 @@ export function moveLineUp(textarea: TextareaRenderable, column?: VimWantedColum
 export function moveLineDown(textarea: TextareaRenderable, column?: VimWantedColumn) {
   const text = textarea.plainText
   textarea.cursorOffset = moveDown(text, textarea.cursorOffset, column)
+}
+
+// Display-line motions delegate wrap handling to the editor view.
+export function moveVisualLineUp(textarea: TextareaRenderable) {
+  const view = textarea.editorView as { moveUpVisual?: () => void }
+  if (typeof view?.moveUpVisual === "function") {
+    view.moveUpVisual()
+    return
+  }
+  moveLineUp(textarea)
+}
+
+export function moveVisualLineDown(textarea: TextareaRenderable) {
+  const view = textarea.editorView as { moveDownVisual?: () => void }
+  if (typeof view?.moveDownVisual === "function") {
+    view.moveDownVisual()
+    return
+  }
+  moveLineDown(textarea)
+}
+
+function setVisualOffset(textarea: TextareaRenderable, offset: number) {
+  const view = textarea.editorView as { setCursorByOffset?: (offset: number) => void }
+  if (typeof view?.setCursorByOffset === "function") view.setCursorByOffset(offset)
+  else textarea.cursorOffset = offset
+}
+
+function visualRow(textarea: TextareaRenderable) {
+  const view = textarea.editorView as { getVisualCursor?: () => { visualRow: number } }
+  return typeof view?.getVisualCursor === "function" ? view.getVisualCursor().visualRow : undefined
+}
+
+export function visualLineStart(textarea: TextareaRenderable) {
+  const row = visualRow(textarea)
+  if (row === undefined) return lineStart(textarea.plainText, textarea.cursorOffset)
+
+  let offset = textarea.cursorOffset
+  while (offset > lineStart(textarea.plainText, offset)) {
+    setVisualOffset(textarea, offset - 1)
+    const moved = textarea.cursorOffset
+    if (moved === offset) return offset
+    if (visualRow(textarea) !== row) {
+      setVisualOffset(textarea, offset)
+      return offset
+    }
+    offset = moved
+  }
+  return offset
+}
+
+export function visualLineEnd(textarea: TextareaRenderable) {
+  const row = visualRow(textarea)
+  if (row === undefined) return lineLast(textarea.plainText, textarea.cursorOffset)
+
+  let offset = textarea.cursorOffset
+  while (offset < lineLast(textarea.plainText, offset)) {
+    setVisualOffset(textarea, offset + 1)
+    const moved = textarea.cursorOffset
+    if (moved === offset) return offset
+    if (visualRow(textarea) !== row) {
+      setVisualOffset(textarea, offset)
+      return offset
+    }
+    offset = moved
+  }
+  return offset
+}
+
+export function moveVisualLineBeginning(textarea: TextareaRenderable) {
+  setVisualOffset(textarea, visualLineStart(textarea))
+}
+
+export function moveVisualFirstNonWhitespace(textarea: TextareaRenderable) {
+  const start = visualLineStart(textarea)
+  const end = visualLineEnd(textarea)
+  for (let offset = start; offset <= end; offset++) {
+    const char = textarea.plainText[offset]
+    if (char && !/\s/.test(char)) {
+      setVisualOffset(textarea, offset)
+      return
+    }
+  }
+  setVisualOffset(textarea, start)
+}
+
+export function moveVisualLineEnd(textarea: TextareaRenderable) {
+  setVisualOffset(textarea, visualLineEnd(textarea))
 }
 
 export function moveMatchingBracket(textarea: TextareaRenderable) {
@@ -247,13 +361,6 @@ function buildOperatorResult(
   const register = registerSpan ?? span
   const slice = text.slice(register.start, register.end)
   return { span, register: { text: linewise ? asLinewise(slice) : slice, linewise } }
-}
-
-export function lineEndOperation(textarea: TextareaRenderable): VimOperatorResult {
-  const text = textarea.plainText
-  const start = textarea.cursorOffset
-  const end = lineEnd(text, start)
-  return buildOperatorResult(text, end > start ? { start, end } : null, null, false)
 }
 
 export function lineBeginningOperation(textarea: TextareaRenderable): VimOperatorResult {
@@ -362,11 +469,11 @@ export function previousParagraphOperation(
   return buildOperatorResult(text, end > target ? { start: target, end } : null, null, true)
 }
 
-export function isWord(char: string) {
+function isWord(char: string) {
   return /[A-Za-z0-9_]/.test(char)
 }
 
-export function isBigWord(char: string) {
+function isBigWord(char: string) {
   return !/\s/.test(char)
 }
 
@@ -868,37 +975,6 @@ export function deleteUnderCursor(textarea: TextareaRenderable): VimRegister {
   return { text: yanked, linewise: false }
 }
 
-export function deleteWord(textarea: TextareaRenderable, big = false): VimRegister {
-  const text = textarea.plainText
-  const startOffset = textarea.cursorOffset
-  const endOffset = nextWordStart(text, startOffset, big)
-  if (endOffset <= startOffset) return null
-  const yanked = text.slice(startOffset, endOffset)
-  deleteOffsets(textarea, startOffset, endOffset)
-  return { text: yanked, linewise: false }
-}
-
-export function deleteWordBackward(textarea: TextareaRenderable): VimRegister {
-  const text = textarea.plainText
-  const startOffset = textarea.cursorOffset
-  const endOffset = prevWordStart(text, startOffset, false)
-  if (endOffset >= startOffset) return null
-  const yanked = text.slice(endOffset, startOffset)
-  deleteOffsets(textarea, endOffset, startOffset)
-  return { text: yanked, linewise: false }
-}
-
-export function deleteWordEnd(textarea: TextareaRenderable, big = false): VimRegister {
-  const text = textarea.plainText
-  const startOffset = textarea.cursorOffset
-  if (startOffset >= text.length) return null
-  const endOffset = wordEnd(text, startOffset, big) + 1
-  if (endOffset <= startOffset) return null
-  const yanked = text.slice(startOffset, endOffset)
-  deleteOffsets(textarea, startOffset, endOffset)
-  return { text: yanked, linewise: false }
-}
-
 export function deleteLine(textarea: TextareaRenderable, anchor?: number): VimRegister {
   const text = textarea.plainText
   if (!text.length) return null
@@ -939,21 +1015,6 @@ export function deleteLineEnd(textarea: TextareaRenderable): VimRegister {
 export function deleteSpan(textarea: TextareaRenderable, span: VimSpan | null): void {
   if (!span || span.end <= span.start) return
   deleteOffsets(textarea, span.start, span.end)
-}
-
-export function findChar(textarea: TextareaRenderable, char: string, forward: boolean, till = false, repeat = false) {
-  const text = textarea.plainText
-  const offset = textarea.cursorOffset
-  const start = lineStart(text, offset)
-  const target = findCharTargetInLine(
-    text.slice(start, lineEnd(text, offset)),
-    offset - start,
-    char,
-    forward,
-    till && repeat ? 2 : 1,
-  )
-  if (target === null) return
-  textarea.cursorOffset = start + target + (till ? (forward ? -1 : 1) : 0)
 }
 
 export function joinLines(textarea: TextareaRenderable) {
@@ -1018,47 +1079,6 @@ export function toggleCase(textarea: TextareaRenderable) {
   moveRight(textarea)
 }
 
-export function yankLine(textarea: TextareaRenderable): VimRegister {
-  const span = yankLineSpan(textarea)
-  return { text: textarea.plainText.slice(span.start, span.end), linewise: true }
-}
-
-export function yankLineSpan(textarea: TextareaRenderable): VimSpan {
-  const text = textarea.plainText
-  const start = lineStart(text, textarea.cursorOffset)
-  const end = lineEnd(text, textarea.cursorOffset)
-  return { start, end }
-}
-
-export function yankWord(textarea: TextareaRenderable, big = false): VimRegister {
-  const span = yankWordSpan(textarea, big)
-  if (!span) return null
-  return { text: textarea.plainText.slice(span.start, span.end), linewise: false }
-}
-
-export function yankWordSpan(textarea: TextareaRenderable, big = false): VimSpan | null {
-  const text = textarea.plainText
-  const start = textarea.cursorOffset
-  const end = nextWordStart(text, start, big)
-  if (end <= start) return null
-  return { start, end }
-}
-
-export function yankWordEnd(textarea: TextareaRenderable, big = false): VimRegister {
-  const span = yankWordEndSpan(textarea, big)
-  if (!span) return null
-  return { text: textarea.plainText.slice(span.start, span.end), linewise: false }
-}
-
-export function yankWordEndSpan(textarea: TextareaRenderable, big = false): VimSpan | null {
-  const text = textarea.plainText
-  const start = textarea.cursorOffset
-  if (start >= text.length) return null
-  const end = wordEnd(text, start, big) + 1
-  if (end <= start) return null
-  return { start, end }
-}
-
 export function pasteAfter(textarea: TextareaRenderable, reg: VimRegister) {
   if (!reg) return
   if (reg.linewise) {
@@ -1086,6 +1106,56 @@ export function pasteBefore(textarea: TextareaRenderable, reg: VimRegister) {
   }
   textarea.insertText(reg.text)
   textarea.cursorOffset = textarea.cursorOffset - 1
+}
+
+export function pasteOverSelection(textarea: TextareaRenderable, reg: VimRegister): VimRegister {
+  if (!reg) return null
+  const sel = textarea.editorView.getSelection()
+  if (!sel || sel.end <= sel.start) return null
+  const start = Math.max(0, Math.min(sel.start, textarea.plainText.length))
+  const end = Math.max(start, Math.min(sel.end, textarea.plainText.length))
+  const text = textarea.plainText.slice(start, end)
+  if (!text) return null
+  clearSelection(textarea)
+  deleteOffsets(textarea, start, end)
+  textarea.insertText(reg.text)
+  textarea.cursorOffset = textarea.cursorOffset - 1
+  return { text, linewise: false }
+}
+
+export function pasteOverVisualSelection(
+  textarea: TextareaRenderable,
+  reg: VimRegister,
+  linewise = false,
+  anchor?: number,
+): VimRegister {
+  if (!reg || anchor === undefined) return null
+  if (!linewise) {
+    const sel = selectionRange(textarea, anchor, false)
+    if (!sel) return null
+    const text = textarea.plainText.slice(sel.start, sel.end)
+    if (!text) return null
+    clearSelection(textarea)
+    deleteOffsets(textarea, sel.start, sel.end)
+    textarea.insertText(reg.text)
+    textarea.cursorOffset = textarea.cursorOffset - 1
+    return { text, linewise: false }
+  }
+
+  const text = textarea.plainText
+  const selectionStart = lineStart(text, Math.min(anchor, textarea.cursorOffset))
+  const selectionEnd = lineEnd(text, Math.max(anchor, textarea.cursorOffset))
+  const deleted = text.slice(selectionStart, selectionEnd)
+  const prefix = selectionEnd >= text.length && selectionStart > 0 ? "\n" : ""
+  const suffix = !prefix && selectionEnd < text.length ? "\n" : ""
+  const start = prefix ? selectionStart - 1 : selectionStart
+  const end = suffix ? selectionEnd + 1 : selectionEnd
+  clearSelection(textarea)
+  deleteOffsets(textarea, start, end)
+  textarea.cursorOffset = start
+  textarea.insertText(prefix + reg.text + suffix)
+  textarea.cursorOffset = start + prefix.length
+  return { text: deleted, linewise: true }
 }
 
 export function syncSelection(textarea: TextareaRenderable, anchor: number, linewise = false) {

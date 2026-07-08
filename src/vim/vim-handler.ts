@@ -8,6 +8,8 @@ import { createVimRepeat } from "./vim-repeat"
 import {
   appendAfterCursor,
   appendLineEnd,
+  alignVisualColumn,
+  clampCursorToLine,
   clearSelection,
   deleteLine,
   deleteLineEnd,
@@ -22,6 +24,8 @@ import {
   insertLineStart,
   joinLines,
   lineBeginningOperation,
+  lineEnd as lineEndOffset,
+  lineStart as lineStartOffset,
   matchingBracketOperation,
   matchingBracketTarget,
   moveBigWordEnd,
@@ -32,6 +36,11 @@ import {
   moveLineBeginning,
   moveLineDown,
   moveLineUp,
+  moveVisualFirstNonWhitespace,
+  moveVisualLineBeginning,
+  moveVisualLineDown,
+  moveVisualLineEnd,
+  moveVisualLineUp,
   moveMatchingBracket,
   moveNextParagraph,
   movePreviousParagraph,
@@ -50,6 +59,8 @@ import {
   type VimWantedColumn,
   pasteAfter,
   pasteBefore,
+  pasteOverSelection,
+  pasteOverVisualSelection,
   previousParagraphOperation,
   bracketTextObjectOperation,
   quoteTextObjectOperation,
@@ -66,6 +77,7 @@ import {
   wordTextObjectOperation,
   yankSelection,
 } from "./vim-motions"
+import { applyLangmap } from "./vim-langmap"
 
 export type VimEvent = {
   name?: string
@@ -95,7 +107,9 @@ function vimEventText(event: VimKeyLike) {
 
 function normalizedKeyName(event: VimKeyLike) {
   if (event.name === "backspace" || event.sequence === "\b" || event.sequence === "\x7f" || event.raw === "\b" || event.raw === "\x7f") return "backspace"
+  if (event.name === "enter") return "return"
   if (event.name === "slash") return event.shift ? "?" : "/"
+  if (event.name === "colon") return ":"
   if (event.name === "at") return "@"
   if (event.name === "quote") return '"'
   if (event.name === "apostrophe") return "'"
@@ -103,16 +117,26 @@ function normalizedKeyName(event: VimKeyLike) {
   const text = vimEventText(event)
   if (
     text &&
-    (text === "/" || text === "?" || text === "@" || text === '"' || text === "'" || text === "`" || "()[]{}<>".includes(text))
+    (text === ":" ||
+      text === "/" ||
+      text === "?" ||
+      text === "@" ||
+      text === '"' ||
+      text === "'" ||
+      text === "`" ||
+      "()[]{}<>".includes(text))
   )
     return text
   if (event.shift) {
+    if (event.name === "4") return "$"
+    if (event.name === "6") return "^"
     if (event.name === "9") return "("
     if (event.name === "0") return ")"
     if (event.name === "[") return "{"
     if (event.name === "]") return "}"
     if (event.name === ",") return "<"
     if (event.name === ".") return ">"
+    if (event.name === ";") return ":"
   }
   return event.name ?? ""
 }
@@ -122,6 +146,7 @@ export function createVimHandler(input: {
   state: ReturnType<typeof createVimState>
   textarea: Accessor<TextareaRenderable>
   submit: () => void
+  commandPalette?: () => void
   scroll: (action: VimScroll) => void
   jump: (action: VimJump) => void
   navigate?: (action: VimWindowNavigation) => void
@@ -136,6 +161,8 @@ export function createVimHandler(input: {
   copyYankMatchingBracket?: () => boolean
   copyToggleVisualEnd?: () => void
   copyCopy?: () => void
+  copyToggleCollapsed?: () => boolean
+  copyActivate?: () => boolean
   copyIsVisual?: () => boolean
   copyJump?: (action: VimJump) => void
   copyWordNext?: (big: boolean) => boolean
@@ -144,7 +171,7 @@ export function createVimHandler(input: {
   copyMatchingBracket?: () => boolean
   copyNextParagraph?: () => boolean
   copyPreviousParagraph?: () => boolean
-  copySearchStart?: (direction: VimSearchDirection) => void
+  copySearchStart?: (direction: VimSearchDirection) => boolean | void
   copySearchAppend?: (value: string) => boolean
   copySearchBackspace?: () => boolean
   copySearchSubmit?: () => boolean
@@ -167,12 +194,15 @@ export function createVimHandler(input: {
   restore?: (next: VimSnapshot) => void
   register?: () => VimRegister
   setRegister?: (register: VimRegister, notify?: boolean) => void
+  pasteOverSelection?: () => boolean
   langmap?: Accessor<Record<string, string> | undefined>
   vimEscapeSequence?: string
 }) {
   let wantedColumn: VimWantedColumn | undefined
+  let visualWantedColumn: number | undefined
   let pendingOperatorCount = 1
   let pendingOperatorFind: { operation: VimOperator; find: VimFindOperator } | undefined
+  let pendingOperatorDisplay: VimOperator | undefined
   let pendingTextObject: { operation: VimOperator; scope: VimTextObjectScope } | undefined
 
   // Two-key escape sequence support (e.g., "jk" to escape insert mode)
@@ -215,19 +245,7 @@ export function createVimHandler(input: {
   function langmapped(event: VimEvent) {
     if (hasModifier(event)) return event
     if (["r", "vr", "f", "F", "t", "T"].includes(input.state.pending())) return event
-    const key = vimLangmapKeyName(event)
-    if (key.length !== 1) return event
-    const langmap = input.langmap?.()
-    const mapped = langmap?.[key] ?? (event.shift ? langmap?.[key.toLowerCase()]?.toUpperCase() : undefined)
-    if (!mapped || mapped.length !== 1) return event
-    return {
-      ...event,
-      name: mapped,
-      sequence: mapped,
-      raw: mapped,
-      shift: /[A-Z]/.test(mapped),
-      preventDefault: () => event.preventDefault(),
-    }
+    return applyLangmap(event, vimLangmapKeyName(event), input.langmap?.())
   }
 
   function isShifted(event: VimEvent, key: string) {
@@ -253,6 +271,10 @@ export function createVimHandler(input: {
 
   function clearWantedColumn() {
     wantedColumn = undefined
+  }
+
+  function clearVisualWantedColumn() {
+    visualWantedColumn = undefined
   }
 
   function repeatCount(count: number, run: () => void) {
@@ -294,21 +316,11 @@ export function createVimHandler(input: {
   }
 
   function startOperator(event: VimEvent, operation: VimOperator) {
+    const display = input.state.count() + operation
     pendingOperatorCount = takeCount()
-    input.state.setPending(operation)
+    input.state.setPending(operation, display)
     event.preventDefault()
     return true
-  }
-
-  function lineStartOffset(text: string, offset: number) {
-    if (offset <= 0) return 0
-    const index = text.lastIndexOf("\n", offset - 1)
-    return index === -1 ? 0 : index + 1
-  }
-
-  function lineEndOffset(text: string, offset: number) {
-    const index = text.indexOf("\n", offset)
-    return index === -1 ? text.length : index
   }
 
   function lineStartForCount(text: string, offset: number, count: number) {
@@ -331,6 +343,16 @@ export function createVimHandler(input: {
     return (key === "v" || isShifted(event, "v")) && !hasModifier(event)
   }
 
+  function preservesVisualWantedColumn(event: VimEvent, key: string) {
+    if (key === "g" && !event.shift && !hasModifier(event)) return true
+    return (
+      input.state.pending() === "g" &&
+      (key === "j" || key === "k" || key === "down" || key === "up") &&
+      !event.shift &&
+      !hasModifier(event)
+    )
+  }
+
   function snapshot(): VimSnapshot {
     if (input.snapshot) return input.snapshot()
     return {
@@ -341,6 +363,7 @@ export function createVimHandler(input: {
 
   function restore(next: VimSnapshot) {
     clearWantedColumn()
+    clearVisualWantedColumn()
     clearSelection(input.textarea())
     input.state.clearPending()
     input.state.setMode("normal")
@@ -522,6 +545,23 @@ export function createVimHandler(input: {
     return substituteLine(textarea, anchor)
   }
 
+  function moveDisplayVertical(direction: "up" | "down", count: number, column: number | undefined) {
+    repeatCount(count, () => {
+      direction === "down" ? moveVisualLineDown(input.textarea()) : moveVisualLineUp(input.textarea())
+      // Native visual moves can land on trailing newlines.
+      clampCursorToLine(input.textarea())
+      if (column !== undefined) alignVisualColumn(input.textarea(), column)
+    })
+  }
+
+  function moveDisplayHorizontal(key: string, count: number) {
+    const textarea = input.textarea()
+    if (key === "$") repeatCount(count - 1, () => moveDisplayVertical("down", 1, undefined))
+    if (key === "0") moveVisualLineBeginning(textarea)
+    else if (key === "^") moveVisualFirstNonWhitespace(textarea)
+    else moveVisualLineEnd(textarea)
+  }
+
   function lineMotionAnchor(direction: "up" | "down", count: number) {
     const textarea = input.textarea()
     const cursor = textarea.cursorOffset
@@ -543,6 +583,114 @@ export function createVimHandler(input: {
       end: lineEndOffset(textarea.plainText, Math.max(cursorLine, anchorLine)),
     }
     return { span, register: { text: textarea.plainText.slice(span.start, span.end), linewise: true } }
+  }
+
+  function clearPendingOperatorDisplay() {
+    if (pendingOperatorDisplay) pendingOperatorCount = 1
+    pendingOperatorDisplay = undefined
+  }
+
+  function displayLinewiseOperation(span: VimSpan | null): VimOperatorResult {
+    if (!span) return { span: null, register: null }
+    const text = input.textarea().plainText.slice(span.start, span.end)
+    return { span, register: { text: text.endsWith("\n") ? text.slice(0, -1) : text, linewise: true } }
+  }
+
+  function visualLineHorizontalMotionOperator(key: string, operation: VimOperator): boolean {
+    const count = takeOperatorCount()
+    const result = () => {
+      const textarea = input.textarea()
+      const cursor = textarea.cursorOffset
+      moveDisplayHorizontal(key, key === "$" ? count : 1)
+      const target = textarea.cursorOffset
+      textarea.cursorOffset = cursor
+
+      if (key === "$") {
+        const end = textarea.plainText[target] && textarea.plainText[target] !== "\n" ? target + 1 : target
+        return charwiseOperation(end > cursor ? { start: cursor, end } : null)
+      }
+
+      if (target === cursor) return charwiseOperation(null)
+
+      const span = { start: Math.min(cursor, target), end: Math.max(cursor, target) }
+      return charwiseOperation(span.end > span.start ? span : null)
+    }
+
+    if (operation === "y") {
+      const yanked = result()
+      applyOperatorYank(yanked)
+      if (yanked.span) input.textarea().cursorOffset = yanked.span.start
+      return true
+    }
+
+    applyOperatorResult(result, operation)
+    return true
+  }
+
+  function visualLineMotionOperator(key: string, operation: VimOperator): boolean {
+    const direction = key === "j" || key === "down" ? "down" : key === "k" || key === "up" ? "up" : undefined
+    if (!direction) return false
+
+    const count = takeOperatorCount()
+    const result = () => {
+      const textarea = input.textarea()
+      const cursor = textarea.cursorOffset
+      const view = textarea.editorView as { getVisualCursor?: () => { visualCol: number } }
+      moveDisplayVertical(direction, count, view.getVisualCursor?.().visualCol)
+      const target = textarea.cursorOffset
+      textarea.cursorOffset = cursor
+
+      if (target === cursor) return charwiseOperation(null)
+
+      const start = Math.min(cursor, target)
+      const end = Math.max(cursor, target)
+      const sameColumnAtLineStart =
+        lineStartOffset(textarea.plainText, cursor) === cursor && lineStartOffset(textarea.plainText, target) === target
+      return sameColumnAtLineStart ? displayLinewiseOperation({ start, end }) : charwiseOperation({ start, end })
+    }
+
+    if (operation === "y") {
+      const yanked = result()
+      applyOperatorYank(yanked)
+      if (yanked.span) input.textarea().cursorOffset = yanked.span.start
+      return true
+    }
+
+    if (operation === "c") {
+      const initial = result()
+      if (!initial.span && !initial.register) {
+        input.state.clearPending()
+        return true
+      }
+      if (!initial.register?.linewise || !initial.span) {
+        applyOperatorEdit(result, operation)
+        return true
+      }
+
+      begin(() => {
+        const next = result()
+        if (!next.span && !next.register) {
+          input.state.clearPending()
+          return false
+        }
+        if (!next.span) {
+          if (next.register) setRegister(next.register)
+          input.state.clearPending()
+          input.state.setMode("insert")
+          return true
+        }
+        const end = input.textarea().plainText[next.span.end - 1] === "\n" ? next.span.end - 1 : next.span.end
+        if (end > next.span.start) deleteSpan(input.textarea(), { start: next.span.start, end })
+        if (next.register) setRegister(next.register)
+        input.state.clearPending()
+        input.state.setMode("insert")
+        return true
+      })
+      return true
+    }
+
+    applyOperatorResult(result, operation)
+    return true
   }
 
   function verticalMotionOperator(event: VimEvent, key: string, operation: VimOperator): boolean {
@@ -672,7 +820,7 @@ export function createVimHandler(input: {
 
   function startOperatorFind(event: VimEvent, operation: VimOperator, find: VimFindOperator) {
     pendingOperatorFind = { operation, find }
-    input.state.setPending(find, operation + find)
+    input.state.setPending(find, (input.state.pendingDisplay() || operation) + find)
     event.preventDefault()
     return true
   }
@@ -686,9 +834,10 @@ export function createVimHandler(input: {
   }
 
   function startTextObject(event: VimEvent, operation: VimOperator, scope: VimTextObjectScope) {
+    const display = (input.state.pendingDisplay() || operation) + (scope === "around" ? "a" : "i")
     takeOperatorCount()
     pendingTextObject = { operation, scope }
-    input.state.setPending(operation, operation + (scope === "around" ? "a" : "i"))
+    input.state.setPending(operation, display)
     event.preventDefault()
     return true
   }
@@ -778,7 +927,10 @@ export function createVimHandler(input: {
   }
 
   function dispatch(event: VimEvent, key: string): boolean {
+    const hadPending = !!input.state.pending()
+    const hadCount = !!input.state.count()
     if (!preservesWantedColumn(event, key)) clearWantedColumn()
+    if (!preservesVisualWantedColumn(event, key)) clearVisualWantedColumn()
 
     if (input.state.pending() === "r") {
       if (hasModifier(event)) {
@@ -853,16 +1005,67 @@ export function createVimHandler(input: {
 
     const scroll = vimScroll(event)
     if (scroll) {
+      clearPendingOperatorDisplay()
       input.state.clearPending()
       input.scroll(scroll)
       event.preventDefault()
       return true
     }
 
+    const pendingForDisplay = input.state.pending()
+    if (
+      (pendingForDisplay === "c" || pendingForDisplay === "d" || pendingForDisplay === "y") &&
+      key === "g" &&
+      !event.shift &&
+      !hasModifier(event)
+    ) {
+      pendingOperatorDisplay = pendingForDisplay
+      input.state.setPending("g", (input.state.pendingDisplay() || pendingForDisplay) + "g")
+      event.preventDefault()
+      return true
+    }
+
+    // Must run before vimJump, which clears pending g on non-g keys.
+    if (input.state.pending() === "g" && !hasModifier(event)) {
+      const operation = pendingOperatorDisplay
+      if ((key === "j" || key === "k" || key === "down" || key === "up") && !event.shift) {
+        pendingOperatorDisplay = undefined
+        if (operation) {
+          visualLineMotionOperator(key, operation)
+        } else {
+          const direction = key === "j" || key === "down" ? "down" : "up"
+          const count = takeCount()
+          const view = input.textarea().editorView as { getVisualCursor?: () => { visualCol: number } }
+          visualWantedColumn ??= view.getVisualCursor?.().visualCol
+          input.state.clearPending()
+          clearWantedColumn()
+          moveDisplayVertical(direction, count, visualWantedColumn)
+        }
+        event.preventDefault()
+        return true
+      }
+      if ((key === "0" && !event.shift) || key === "^" || key === "$") {
+        pendingOperatorDisplay = undefined
+        if (operation) {
+          visualLineHorizontalMotionOperator(key, operation)
+        } else {
+          const count = takeCount()
+          input.state.clearPending()
+          clearWantedColumn()
+          moveDisplayHorizontal(key, count)
+        }
+        event.preventDefault()
+        return true
+      }
+    }
+
+    if (input.state.pending() === "g") clearPendingOperatorDisplay()
+
     const jump = vimJump(event, input.state)
     if (jump.handled) {
       if (jump.action) {
         input.state.clearPending()
+        clearVisualWantedColumn()
         input.jump(jump.action)
       }
       event.preventDefault()
@@ -1028,13 +1231,9 @@ export function createVimHandler(input: {
 
       if (key === "p" && !event.shift && !hasModifier(event)) {
         edit(() => {
-          const reg = register()
-          if (reg) {
-            deleteSelection(input.textarea(), false, a ?? undefined)
-            clearSelection(input.textarea())
-            input.textarea().insertText(reg.text)
-            input.textarea().cursorOffset = input.textarea().cursorOffset - 1
-          }
+          const deleted = pasteOverVisualSelection(input.textarea(), register(), lw, a ?? undefined)
+          if (deleted) setRegister(deleted)
+          clearSelection(input.textarea())
           input.state.setMode("normal")
         })
         event.preventDefault()
@@ -1066,7 +1265,16 @@ export function createVimHandler(input: {
       }
     }
 
-    if (input.state.pending() === "c") {
+    if (key === ":" && !hasModifier(event) && !hadPending && !hadCount) {
+      input.commandPalette?.()
+      input.state.clearPending()
+      event.preventDefault()
+      return true
+    }
+
+    // Handles a key while a c/d/y operator is pending. Returns true/false when
+    // the key resolved the operator, or undefined to fall through to normal dispatch.
+    function operatorPending(op: "c" | "d" | "y", event: VimEvent, key: string): boolean | undefined {
       if (hasModifier(event)) {
         pendingOperatorCount = 1
         input.state.clearPending()
@@ -1074,12 +1282,57 @@ export function createVimHandler(input: {
       }
 
       if (isPendingOperatorCountInput(event, key)) {
+        const count = input.state.count()
         input.state.appendCountDigit(key)
+        if (input.state.count() !== count) input.state.setPending(op, (input.state.pendingDisplay() || op) + key)
         event.preventDefault()
         return true
       }
 
-      if (key === "c" && !event.shift) {
+      if (key === op && !event.shift) {
+        doubledOperator(op)
+        event.preventDefault()
+        return true
+      }
+
+      if (verticalMotionOperator(event, key, op)) {
+        event.preventDefault()
+        return true
+      }
+
+      if (wordOperator(event, key, op)) {
+        event.preventDefault()
+        return true
+      }
+
+      if (lineBoundaryMotion(event, key, op)) {
+        event.preventDefault()
+        return true
+      }
+
+      if (operatorTextObject(event, key, op)) return true
+
+      if (paragraphOperator(key, op)) {
+        event.preventDefault()
+        return true
+      }
+
+      if (matchingBracketOperator(key, op)) {
+        event.preventDefault()
+        return true
+      }
+
+      if (operatorFind(event, key, op)) return true
+
+      pendingOperatorCount = 1
+      pendingTextObject = undefined
+      input.state.clearPending()
+      return undefined
+    }
+
+    // cc / dd / yy operate on whole lines.
+    function doubledOperator(op: "c" | "d" | "y") {
+      if (op === "c") {
         const count = takeOperatorCount()
         begin(() => {
           const reg = substituteLineCount(count)
@@ -1087,156 +1340,35 @@ export function createVimHandler(input: {
           input.state.clearPending()
           input.state.setMode("insert")
         })
-        event.preventDefault()
-        return true
+        return
       }
-
-      if (verticalMotionOperator(event, key, "c")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (wordOperator(event, key, "c")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (lineBoundaryMotion(event, key, "c")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (operatorTextObject(event, key, "c")) return true
-
-      if (paragraphOperator(key, "c")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (matchingBracketOperator(key, "c")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (operatorFind(event, key, "c")) return true
-
-      pendingOperatorCount = 1
-      pendingTextObject = undefined
-      input.state.clearPending()
-    }
-
-    if (input.state.pending() === "d") {
-      if (hasModifier(event)) {
-        pendingOperatorCount = 1
-        input.state.clearPending()
-        return false
-      }
-
-      if (isPendingOperatorCountInput(event, key)) {
-        input.state.appendCountDigit(key)
-        event.preventDefault()
-        return true
-      }
-
-      if (key === "d" && !event.shift) {
+      if (op === "d") {
         const count = takeOperatorCount()
         edit(() => {
           const reg = deleteLineCount(count)
           if (reg) setRegister(reg)
           input.state.clearPending()
         })
-        event.preventDefault()
-        return true
+        return
       }
-
-      if (verticalMotionOperator(event, key, "d")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (wordOperator(event, key, "d")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (lineBoundaryMotion(event, key, "d")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (operatorTextObject(event, key, "d")) return true
-
-      if (paragraphOperator(key, "d")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (matchingBracketOperator(key, "d")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (operatorFind(event, key, "d")) return true
-
-      pendingOperatorCount = 1
-      pendingTextObject = undefined
+      const result = yankLineCount(takeOperatorCount())
+      setRegister(result.register, true)
+      if (result.span.end > result.span.start) input.flash?.(result.span)
       input.state.clearPending()
     }
 
-    if (input.state.pending() === "y") {
-      if (hasModifier(event)) {
-        pendingOperatorCount = 1
-        input.state.clearPending()
-        return false
-      }
-
-      if (isPendingOperatorCountInput(event, key)) {
-        input.state.appendCountDigit(key)
-        event.preventDefault()
-        return true
-      }
-
-      if (key === "y" && !event.shift) {
-        const result = yankLineCount(takeOperatorCount())
-        setRegister(result.register, true)
-        if (result.span.end > result.span.start) input.flash?.(result.span)
+    if ((key === "/" || key === "?") && !hasModifier(event) && !hadPending && !hadCount && !input.state.isVisual()) {
+      if (input.copySearchStart?.(key === "?" ? "backward" : "forward") !== false) {
         input.state.clearPending()
         event.preventDefault()
         return true
       }
+    }
 
-      if (verticalMotionOperator(event, key, "y")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (wordOperator(event, key, "y")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (lineBoundaryMotion(event, key, "y")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (operatorTextObject(event, key, "y")) return true
-
-      if (paragraphOperator(key, "y")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (matchingBracketOperator(key, "y")) {
-        event.preventDefault()
-        return true
-      }
-
-      if (operatorFind(event, key, "y")) return true
-
-      pendingOperatorCount = 1
-      pendingTextObject = undefined
-      input.state.clearPending()
+    const pendingOperator = input.state.pending()
+    if (pendingOperator === "c" || pendingOperator === "d" || pendingOperator === "y") {
+      const handled = operatorPending(pendingOperator, event, key)
+      if (handled !== undefined) return handled
     }
 
     if (key === "return" && !hasModifier(event)) {
@@ -1272,7 +1404,9 @@ export function createVimHandler(input: {
     if (key === "p" && !event.shift && !hasModifier(event)) {
       const reg = register()
       edit(() => {
-        pasteAfter(input.textarea(), reg)
+        const deleted = input.pasteOverSelection?.() !== false ? pasteOverSelection(input.textarea(), reg) : null
+        if (deleted) setRegister(deleted)
+        else pasteAfter(input.textarea(), reg)
       })
       event.preventDefault()
       return true
@@ -1281,32 +1415,23 @@ export function createVimHandler(input: {
     if (isShifted(event, "p") && !hasModifier(event)) {
       const reg = register()
       edit(() => {
-        pasteBefore(input.textarea(), reg)
+        const deleted = input.pasteOverSelection?.() !== false ? pasteOverSelection(input.textarea(), reg) : null
+        if (deleted) setRegister(deleted)
+        else pasteBefore(input.textarea(), reg)
       })
       event.preventDefault()
       return true
     }
 
-    if (key === "f" && !event.shift && !hasModifier(event)) {
-      input.state.setPending("f")
+    if ((key === "f" || key === "t") && !event.shift && !hasModifier(event)) {
+      input.state.setPending(key, input.state.count() + key)
       event.preventDefault()
       return true
     }
 
-    if (isShifted(event, "f") && !hasModifier(event)) {
-      input.state.setPending("F")
-      event.preventDefault()
-      return true
-    }
-
-    if (key === "t" && !event.shift && !hasModifier(event)) {
-      input.state.setPending("t")
-      event.preventDefault()
-      return true
-    }
-
-    if (isShifted(event, "t") && !hasModifier(event)) {
-      input.state.setPending("T")
+    if ((isShifted(event, "f") || isShifted(event, "t")) && !hasModifier(event)) {
+      const find = isShifted(event, "f") ? "F" : "T"
+      input.state.setPending(find, input.state.count() + find)
       event.preventDefault()
       return true
     }
@@ -1594,7 +1719,7 @@ export function createVimHandler(input: {
     }
 
     if (key === "w" && event.ctrl && !event.shift && !event.meta && !event.super) {
-      input.state.setPending("w")
+      input.state.setPending("w", "^W")
       event.preventDefault()
       return true
     }
@@ -1691,6 +1816,10 @@ export function createVimHandler(input: {
     }
 
     if (key === "return") {
+      if (!event.shift && !input.copyIsVisual?.() && (input.copyToggleCollapsed?.() || input.copyActivate?.())) {
+        event.preventDefault()
+        return true
+      }
       input.copyCopy?.()
       if (event.shift) {
         input.state.setMode("normal")
@@ -1711,6 +1840,7 @@ export function createVimHandler(input: {
     }
     if (key === "q") {
       input.state.setMode("normal")
+      input.copyExit?.()
       event.preventDefault()
       return true
     }
@@ -1733,6 +1863,7 @@ export function createVimHandler(input: {
         return true
       }
       input.state.setMode("normal")
+      input.copyExit?.()
       event.preventDefault()
       return true
     }
@@ -1755,7 +1886,7 @@ export function createVimHandler(input: {
     }
 
     if (key === "w" && event.ctrl && !event.shift && !event.meta && !event.super) {
-      input.state.setPending("w")
+      input.state.setPending("w", "^W")
       event.preventDefault()
       return true
     }
@@ -2037,19 +2168,19 @@ export function createVimHandler(input: {
 
     // find-char pending
     if ((key === "f" || key === "t") && !event.shift) {
-      input.state.setPending(key)
+      input.state.setPending(key, key)
       event.preventDefault()
       return true
     }
 
     if (isShifted(event, "f")) {
-      input.state.setPending("F")
+      input.state.setPending("F", "F")
       event.preventDefault()
       return true
     }
 
     if (isShifted(event, "t")) {
-      input.state.setPending("T")
+      input.state.setPending("T", "T")
       event.preventDefault()
       return true
     }
@@ -2126,12 +2257,23 @@ export function createVimHandler(input: {
       }
 
       if (input.state.isInsert()) {
+        // Escape always takes priority over pending escape sequence
+        if (event.name === "escape") {
+          clearEscapePending()
+          input.state.setMode("normal")
+          input.state.commitEdit(snapshot())
+          moveLeft(input.textarea())
+          repeat.commit(snapshot())
+          event.preventDefault()
+          return true
+        }
+
         // Two-key escape sequence support (e.g., "jk" to exit insert mode)
         if (escapeSeq) {
-          const key = normalizedKeyName(langmapped(event))
+          const key = normalizedKeyName(event)
           if (escapePending) {
             clearEscapePending()
-            if (key === escapeSecond) {
+            if (key === escapeSecond && !hasModifier(event)) {
               // Remove the first char that was already typed using proper textarea API
               const pos = input.textarea().cursorOffset
               if (pos > 0) {
@@ -2160,15 +2302,6 @@ export function createVimHandler(input: {
           }
         }
 
-        if (event.name === "escape") {
-          clearEscapePending()
-          input.state.setMode("normal")
-          input.state.commitEdit(snapshot())
-          moveLeft(input.textarea())
-          repeat.commit(snapshot())
-          event.preventDefault()
-          return true
-        }
         clearEscapePending()
         return false
       }
