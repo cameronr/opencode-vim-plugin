@@ -12,6 +12,7 @@ const KV_ENABLED = "ocv.vim.enabled"
 type Options = {
   enabled: boolean
   toggleKey?: string
+  indicator: boolean
   langmap?: Record<string, string>
 }
 
@@ -23,6 +24,7 @@ function readOptions(input: unknown): Options {
   const options = isRecord(input) ? input : {}
   const enabled = typeof options.enabled === "boolean" ? options.enabled : true
   const toggleKey = typeof options.toggle_key === "string" && options.toggle_key.trim() ? options.toggle_key : undefined
+  const indicator = options.indicator === false || options.indicator === "off" ? false : true
   const langmap = isRecord(options.langmap)
     ? Object.fromEntries(
         Object.entries(options.langmap).filter(
@@ -30,21 +32,14 @@ function readOptions(input: unknown): Options {
         ),
       )
     : undefined
-  return { enabled, toggleKey, langmap }
-}
-
-function isInsertIndicator(indicator: string) {
-  return indicator === "-- INSERT --"
-}
-
-function isVisualIndicator(indicator: string) {
-  return ["-- VISUAL --", "-- VISUAL LINE --", "-- VISUAL BLOCK --"].includes(indicator)
+  return { enabled, toggleKey, indicator, langmap }
 }
 
 function Status(props: {
   indicator: Accessor<string | undefined>
   pending: Accessor<string>
   isVisual: Accessor<boolean>
+  showIndicator: boolean
   applyCursorStyle: () => void
   api: TuiPluginApi
 }) {
@@ -55,22 +50,13 @@ function Status(props: {
     props.applyCursorStyle()
   })
 
+  if (!props.showIndicator) return null
+
   return (
     <Show when={props.indicator()}>
       {(indicator) => (
         <box paddingLeft={1} flexShrink={0}>
-          <text
-            fg={
-              props.pending()
-                ? props.api.theme.current.textMuted
-                : isInsertIndicator(indicator())
-                  ? props.api.theme.current.accent
-                  : isVisualIndicator(indicator())
-                    ? props.api.theme.current.text
-                    : props.api.theme.current.textMuted
-            }
-            attributes={props.pending() || props.isVisual() ? TextAttributes.BOLD : undefined}
-          >
+          <text fg={props.api.theme.current.textMuted} attributes={props.pending() || props.isVisual() ? TextAttributes.BOLD : undefined}>
             {indicator()}
           </text>
         </box>
@@ -132,6 +118,7 @@ const tui: TuiPlugin = async (api, rawOptions) => {
             indicator={prompt.indicator}
             pending={prompt.pending}
             isVisual={prompt.isVisual}
+            showIndicator={options.indicator}
             applyCursorStyle={prompt.applyCursorStyle}
             api={api}
           />
@@ -143,6 +130,7 @@ const tui: TuiPlugin = async (api, rawOptions) => {
             indicator={prompt.indicator}
             pending={prompt.pending}
             isVisual={prompt.isVisual}
+            showIndicator={options.indicator}
             applyCursorStyle={prompt.applyCursorStyle}
             api={api}
           />

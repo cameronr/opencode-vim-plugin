@@ -12,6 +12,9 @@ type TextareaLike = TextareaRenderable & {
 }
 
 const COMMAND_KEY = "ocv.vim.key"
+const COMMAND_QUIT = "ocv.vim.quit"
+const COMMAND_PALETTE = "command.palette.show"
+const COMMAND_EXIT = "app.exit"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -27,6 +30,47 @@ function isTextareaLike(value: unknown): value is TextareaLike {
     typeof value.setText === "function" &&
     typeof value.editBuffer === "object"
   )
+}
+
+const shiftedSymbols: Record<string, string> = {
+  "1": "!",
+  "2": "@",
+  "3": "#",
+  "4": "$",
+  "5": "%",
+  "6": "^",
+  "7": "&",
+  "8": "*",
+  "9": "(",
+  "0": ")",
+  "-": "_",
+  "=": "+",
+  "[": "{",
+  "]": "}",
+  "\\": "|",
+  ";": ":",
+  "'": '"',
+  ",": "<",
+  ".": ">",
+  "/": "?",
+  "`": "~",
+}
+
+function vimEvent(event: KeyEvent) {
+  const symbol = event.shift ? shiftedSymbols[event.name] : undefined
+  if (!symbol) return event
+  return {
+    ...event,
+    name: symbol,
+    sequence: symbol,
+    raw: symbol,
+    preventDefault: () => event.preventDefault(),
+    stopPropagation: () => event.stopPropagation(),
+  }
+}
+
+function hasModifier(event: { ctrl?: boolean; meta?: boolean; super?: boolean }) {
+  return !!event.ctrl || !!event.meta || !!event.super
 }
 
 const normalKeys = [
@@ -62,6 +106,9 @@ const normalKeys = [
   "shift+4",
   "shift+6",
   "shift+-",
+  "$",
+  "^",
+  "_",
   "g",
   "shift+g",
   "f",
@@ -103,12 +150,17 @@ const normalKeys = [
   "`",
   "shift+9",
   "shift+0",
+  "(",
+  ")",
   "[",
   "]",
   "shift+[",
   "shift+]",
   "shift+,",
   "shift+.",
+  "%",
+  "<",
+  ">",
   "shift+5",
   "ctrl+e",
   "ctrl+y",
@@ -161,6 +213,18 @@ const insertPrintableKeys = [
   "shift+x",
   "shift+y",
   "shift+z",
+  "!",
+  "@",
+  "#",
+  "$",
+  "%",
+  "^",
+  "&",
+  "*",
+  "(",
+  ")",
+  "_",
+  "+",
   "shift+1",
   "shift+2",
   "shift+3",
@@ -176,7 +240,14 @@ const insertPrintableKeys = [
   "shift+[",
   "shift+]",
   "shift+\\",
+  "{",
+  "}",
+  "|",
+  ":",
   "\"",
+  "<",
+  ">",
+  "?",
   "shift+,",
   "shift+.",
   "shift+slash",
@@ -240,12 +311,20 @@ export function createPromptVim(
     state,
     textarea,
     submit: () => textarea().submit(),
-    scroll: () => {},
+    scroll(action) {
+      if (action === "line-down") api.keymap.dispatchCommand("session.line.down")
+      if (action === "line-up") api.keymap.dispatchCommand("session.line.up")
+      if (action === "half-down") api.keymap.dispatchCommand("session.half.page.down")
+      if (action === "half-up") api.keymap.dispatchCommand("session.half.page.up")
+      if (action === "page-down") api.keymap.dispatchCommand("session.page.down")
+      if (action === "page-up") api.keymap.dispatchCommand("session.page.up")
+    },
     jump(action) {
       if (action === "top") textarea().gotoBufferHome()
       if (action === "bottom") textarea().gotoBufferEnd()
     },
     navigate: () => {},
+    autocomplete: () => false,
     langmap: input.langmap,
   })
 
@@ -257,6 +336,18 @@ export function createPromptVim(
 
   const commands = [
     {
+      name: COMMAND_QUIT,
+      title: "Quit",
+      category: "System",
+      namespace: "palette",
+      slashName: "q",
+      slashAliases: ["quit"],
+      run() {
+        api.keymap.dispatchCommand(COMMAND_EXIT)
+        api.ui.dialog.clear()
+      },
+    },
+    {
       name: COMMAND_KEY,
       title: "Vim key",
       desc: "Handle Vim prompt key",
@@ -264,7 +355,14 @@ export function createPromptVim(
       hidden: true,
       run(ctx: VimContext) {
         if (!promptEditor()) return false
-        const handled = handler.handleKey(ctx.event)
+        const event = vimEvent(ctx.event)
+        if (state.mode() === "normal" && event.name === ":" && !hasModifier(event)) {
+          event.preventDefault()
+          event.stopPropagation()
+          api.keymap.dispatchCommand(COMMAND_PALETTE)
+          return true
+        }
+        const handled = handler.handleKey(event)
         applyCursorStyle()
         if (handled) ctx.event.stopPropagation()
         return handled
