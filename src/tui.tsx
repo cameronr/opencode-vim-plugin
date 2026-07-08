@@ -177,12 +177,10 @@ const tui: TuiPlugin = async (api, rawOptions) => {
   }
 
   api.keymap.registerLayer({
-    priority: 100,
     commands: [
       {
         name: COMMAND_TOGGLE,
         title: "Toggle vim mode",
-        desc: "Enable or disable the OpenCode Vim plugin",
         category: "Plugin",
         namespace: "palette",
         slashName: "vim",
@@ -193,6 +191,11 @@ const tui: TuiPlugin = async (api, rawOptions) => {
       },
       ...prompt.commands,
     ],
+  })
+
+  api.keymap.registerLayer({
+    mode: "base",
+    priority: 100,
     bindings: [
       ...(options.toggleKey ? [{ key: options.toggleKey, cmd: COMMAND_TOGGLE, desc: "Toggle vim mode" }] : []),
       ...prompt.bindings,
@@ -201,6 +204,7 @@ const tui: TuiPlugin = async (api, rawOptions) => {
 
   if (options.normalBindings.length > 0) {
     api.keymap.registerLayer({
+      mode: "base",
       priority: 200,
       enabled: () => enabled() && prompt.mode() === "normal",
       bindings: options.normalBindings,

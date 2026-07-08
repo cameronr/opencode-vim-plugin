@@ -52,6 +52,7 @@ async function setup(options: unknown = {}) {
   const api: any = {
     app: { version: "test" },
     kv: { get: (_key: string, fallback: unknown) => fallback, set() {} },
+    mode: { current: () => "base", push: () => () => {} },
     keymap: {
       registerLayer(layer: any) {
         layers.push(layer)
@@ -98,6 +99,7 @@ async function setup(options: unknown = {}) {
   assert(tokens.some((token) => token.name === "ocv-vim-leader" && token.key === "space"), "normal leader token was not registered")
   const normalLayer = layers.find((layer) => layer.priority === 200)
   assert(normalLayer, "normal-mode keybind layer was not registered")
+  assert(normalLayer.mode === "base", "normal keybind layer should be inactive while autocomplete is open")
   assert(normalLayer.bindings.some((binding: any) => binding.key === "<ocv-vim-leader>s" && binding.cmd === "session.list"), "leader binding was not expanded")
   assert(
     normalLayer.bindings.some((binding: any) => binding.key === "j" && binding.cmd === "session.line.down" && binding.preventDefault === false),
@@ -111,6 +113,11 @@ async function setup(options: unknown = {}) {
 {
   const { layers, api, disposers } = await setup()
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv.vim.quit"))
+  assert(commandLayer?.mode === undefined, "vim palette commands should remain reachable while autocomplete is open")
+  const bindingLayer = layers.find((layer) => layer.priority === 100 && layer.bindings?.some((binding: any) => binding.cmd === "ocv.vim.key"))
+  assert(bindingLayer?.mode === "base", "vim key bindings should be inactive while autocomplete is open")
+  const toggle = commandLayer?.commands.find((command: any) => command.name === "ocv.vim.toggle")
+  assert(toggle?.slashName === "vim", "toggle command should expose /vim")
   const quit = commandLayer?.commands.find((command: any) => command.name === "ocv.vim.quit")
   assert(quit?.title === "Quit", "quit command title should be concise")
   assert(quit?.category === "System", "quit command should be in the System category")
