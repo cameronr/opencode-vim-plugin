@@ -1,5 +1,5 @@
-import type { VimEvent } from "./vim-handler"
-import type { createVimState } from "./vim-state"
+import type { VimEvent } from "./handler"
+import type { createVimState } from "./state"
 
 export type VimJump = "top" | "bottom" | "high" | "middle" | "low"
 

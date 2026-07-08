@@ -1,5 +1,5 @@
 import { createMemo, type Accessor } from "solid-js"
-import type { createVimState } from "./vim-state"
+import type { createVimState } from "./state"
 
 export function useVimIndicator(input: {
   enabled: Accessor<boolean>

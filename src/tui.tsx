@@ -6,10 +6,10 @@ import type { Binding, KeyLike } from "@opentui/keymap"
 import { createEffect, createSignal, Show, type Accessor } from "solid-js"
 import { createPromptVim } from "./prompt-vim"
 
-const PLUGIN_ID = "ocv.vim"
-const COMMAND_TOGGLE = "ocv.vim.toggle"
-const KV_ENABLED = "ocv.vim.enabled"
-const NORMAL_LEADER_TOKEN = "ocv-vim-leader"
+const PLUGIN_ID = "ocv-plugin"
+const COMMAND_TOGGLE = "ocv-plugin.toggle"
+const KV_ENABLED = "ocv-plugin.enabled"
+const NORMAL_LEADER_TOKEN = "ocv-plugin-leader"
 
 type NormalBinding = Binding<Renderable, KeyEvent> & { cmd: string }
 

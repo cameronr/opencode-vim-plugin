@@ -1,10 +1,10 @@
 import type { Accessor } from "solid-js"
-import type { createVimState, VimRegister, VimSnapshot } from "./vim-state"
+import type { createVimState, VimRegister, VimSnapshot } from "./state"
 import type { TextareaRenderable } from "@opentui/core"
-import { vimScroll, type VimScroll } from "./vim-scroll"
-import { vimJump, type VimJump } from "./vim-motion-jump"
-import { vimWindowNavigation, type VimWindowNavigation } from "./vim-motion-window-navigation"
-import { createVimRepeat } from "./vim-repeat"
+import { vimScroll, type VimScroll } from "./scroll"
+import { vimJump, type VimJump } from "./jump"
+import { vimWindowNavigation, type VimWindowNavigation } from "./window-navigation"
+import { createVimRepeat } from "./repeat"
 import {
   appendAfterCursor,
   appendLineEnd,
@@ -76,8 +76,8 @@ import {
   wordEnd,
   wordTextObjectOperation,
   yankSelection,
-} from "./vim-motions"
-import { applyLangmap } from "./vim-langmap"
+} from "./motions"
+import { applyLangmap } from "./langmap"
 
 export type VimEvent = {
   name?: string

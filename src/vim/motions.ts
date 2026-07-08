@@ -1,5 +1,5 @@
 import type { TextareaRenderable } from "@opentui/core"
-import type { VimRegister } from "./vim-state"
+import type { VimRegister } from "./state"
 
 export type VimSpan = { start: number; end: number }
 export type VimCopyRow = { col: number }

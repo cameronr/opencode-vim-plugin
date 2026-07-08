@@ -35,6 +35,12 @@ function fakeTextarea() {
       this.cursorOffset = text.length
     },
     submit() {},
+    gotoBufferHome() {
+      this.cursorOffset = 0
+    },
+    gotoBufferEnd() {
+      this.cursorOffset = this.plainText.length
+    },
     render() {},
     getLayoutNode() {
       return { markDirty() {} }
@@ -96,11 +102,11 @@ async function setup(options: unknown = {}) {
     },
   })
 
-  assert(tokens.some((token) => token.name === "ocv-vim-leader" && token.key === "space"), "normal leader token was not registered")
+  assert(tokens.some((token) => token.name === "ocv-plugin-leader" && token.key === "space"), "normal leader token was not registered")
   const normalLayer = layers.find((layer) => layer.priority === 200)
   assert(normalLayer, "normal-mode keybind layer was not registered")
   assert(normalLayer.mode === "base", "normal keybind layer should be inactive while autocomplete is open")
-  assert(normalLayer.bindings.some((binding: any) => binding.key === "<ocv-vim-leader>s" && binding.cmd === "session.list"), "leader binding was not expanded")
+  assert(normalLayer.bindings.some((binding: any) => binding.key === "<ocv-plugin-leader>s" && binding.cmd === "session.list"), "leader binding was not expanded")
   assert(
     normalLayer.bindings.some((binding: any) => binding.key === "j" && binding.cmd === "session.line.down" && binding.preventDefault === false),
     "normal key binding was not registered",
@@ -112,17 +118,17 @@ async function setup(options: unknown = {}) {
 
 {
   const { layers, api, disposers } = await setup()
-  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv.vim.quit"))
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.quit"))
   assert(commandLayer?.mode === undefined, "vim palette commands should remain reachable while autocomplete is open")
-  const bindingLayer = layers.find((layer) => layer.priority === 100 && layer.bindings?.some((binding: any) => binding.cmd === "ocv.vim.key"))
+  const bindingLayer = layers.find((layer) => layer.priority === 100 && layer.bindings?.some((binding: any) => binding.cmd === "ocv-plugin.key"))
   assert(bindingLayer?.mode === "base", "vim key bindings should be inactive while autocomplete is open")
-  const toggle = commandLayer?.commands.find((command: any) => command.name === "ocv.vim.toggle")
+  const toggle = commandLayer?.commands.find((command: any) => command.name === "ocv-plugin.toggle")
   assert(toggle?.slashName === "vim", "toggle command should expose /vim")
-  const quit = commandLayer?.commands.find((command: any) => command.name === "ocv.vim.quit")
+  const quit = commandLayer?.commands.find((command: any) => command.name === "ocv-plugin.quit")
   assert(quit?.title === "Quit", "quit command title should be concise")
   assert(quit?.category === "System", "quit command should be in the System category")
 
-  const key = commandLayer.commands.find((command: any) => command.name === "ocv.vim.key")
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const editor = fakeTextarea()
   api.renderer.currentFocusedEditor = editor
   const event: any = {
@@ -149,6 +155,42 @@ async function setup(options: unknown = {}) {
   assert(disposers.length === 1, "prompt cleanup should be registered with plugin lifecycle")
   await disposers[0]?.()
   assert(editor.render === originalRender, "prompt cleanup should restore patched render")
+}
+
+{
+  const { layers, api, dispatched } = await setup()
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  api.renderer.currentFocusedEditor = fakeTextarea()
+
+  const shiftG: any = {
+    name: "g",
+    sequence: "G",
+    raw: "G",
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: true,
+    preventDefault() {},
+    stopPropagation() {},
+  }
+  key.run({ event: shiftG })
+  assert(dispatched.at(-1) === "session.last", "G on an empty prompt should jump to the last session message")
+
+  const g = () => ({
+    name: "g",
+    sequence: "g",
+    raw: "g",
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+  key.run({ event: g() })
+  key.run({ event: g() })
+  assert(dispatched.at(-1) === "session.first", "gg on an empty prompt should jump to the first session message")
 }
 
 console.log("ok: adapter behavior checks passed")

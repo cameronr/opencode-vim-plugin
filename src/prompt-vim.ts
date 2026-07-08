@@ -1,13 +1,13 @@
 import type { KeyEvent, Renderable, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { Binding, CommandContext } from "@opentui/keymap"
 import { RGBA, type TextareaRenderable } from "@opentui/core"
-import { createVimHandler } from "./vim/vim-handler"
-import { useVimIndicator } from "./vim/vim-indicator"
-import { createVimState, type VimMode, type VimRegister } from "./vim/vim-state"
+import { createVimHandler } from "./vim/handler"
+import { useVimIndicator } from "./vim/indicator"
+import { createVimState, type VimMode, type VimRegister } from "./vim/state"
 
 type VimContext = CommandContext<Renderable, KeyEvent>
 
-const PROMPT_RENDER_PATCH = Symbol("ocv.vim.prompt.render.patch")
+const PROMPT_RENDER_PATCH = Symbol("ocv-plugin.prompt.render.patch")
 
 type PromptRenderPatch = {
   original: TextareaLike["render"]
@@ -19,8 +19,8 @@ type TextareaLike = TextareaRenderable & {
   [PROMPT_RENDER_PATCH]?: PromptRenderPatch
 }
 
-const COMMAND_KEY = "ocv.vim.key"
-const COMMAND_QUIT = "ocv.vim.quit"
+const COMMAND_KEY = "ocv-plugin.key"
+const COMMAND_QUIT = "ocv-plugin.quit"
 const COMMAND_PALETTE = "command.palette.show"
 const COMMAND_EXIT = "app.exit"
 const YANK_FLASH_MS = 70

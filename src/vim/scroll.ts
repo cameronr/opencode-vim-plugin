@@ -1,4 +1,4 @@
-import type { VimEvent } from "./vim-handler"
+import type { VimEvent } from "./handler"
 
 export type VimScroll = "line-down" | "line-up" | "half-down" | "half-up" | "page-down" | "page-up"
 

@@ -1,6 +1,6 @@
 import type { TextareaRenderable } from "@opentui/core"
-import type { createVimState, VimSnapshot } from "./vim-state"
-import { replaceUnderCursor } from "./vim-motions"
+import type { createVimState, VimSnapshot } from "./state"
+import { replaceUnderCursor } from "./motions"
 
 type VimTextPatch = {
   startOffset: number
