@@ -127,6 +127,9 @@ const normalKeys = [
   "j",
   "k",
   "l",
+  "shift+h",
+  "shift+m",
+  "shift+l",
   "w",
   "b",
   "e",
@@ -452,6 +455,23 @@ export function createPromptVim(
     }, YANK_FLASH_MS)
   }
 
+  function jumpPromptViewport(action: "high" | "middle" | "low") {
+    const editor = textarea()
+    const row = action === "high" ? 0 : action === "middle" ? Math.max(0, Math.floor((editor.height - 1) / 2)) : editor.height - 1
+
+    let prev = -1
+    while (editor.visualCursor.visualRow > row && editor.cursorOffset !== prev) {
+      prev = editor.cursorOffset
+      editor.moveCursorUp()
+    }
+
+    prev = -1
+    while (editor.visualCursor.visualRow < row && editor.cursorOffset !== prev) {
+      prev = editor.cursorOffset
+      editor.moveCursorDown()
+    }
+  }
+
   const handler = createVimHandler({
     enabled: () => Boolean(promptEditor()),
     state,
@@ -474,8 +494,12 @@ export function createPromptVim(
       if (action === "page-up") api.keymap.dispatchCommand("session.page.up")
     },
     jump(action) {
+      if (action === "high" || action === "middle" || action === "low") {
+        jumpPromptViewport(action)
+        return
+      }
       const editor = textarea()
-      if (action === "high" || action === "middle" || action === "low" || editor.plainText.length > 0) {
+      if (editor.plainText.length > 0) {
         if (action === "top") editor.gotoBufferHome()
         if (action === "bottom") editor.gotoBufferEnd()
         return

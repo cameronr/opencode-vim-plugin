@@ -41,6 +41,18 @@ function fakeTextarea() {
     gotoBufferEnd() {
       this.cursorOffset = this.plainText.length
     },
+    moveCursorUp() {
+      if (this.visualCursor.visualRow <= 0) return false
+      this.visualCursor.visualRow--
+      this.cursorOffset--
+      return true
+    },
+    moveCursorDown() {
+      if (this.visualCursor.visualRow >= this.height - 1) return false
+      this.visualCursor.visualRow++
+      this.cursorOffset++
+      return true
+    },
     render() {},
     getLayoutNode() {
       return { markDirty() {} }
@@ -213,6 +225,36 @@ async function setup(options: unknown = {}) {
   key.run({ event: g() })
   key.run({ event: g() })
   assert(dispatched.at(-1) === "session.first", "gg on an empty prompt should jump to the first session message")
+}
+
+{
+  const { layers, api } = await setup()
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const editor: any = fakeTextarea()
+  editor.height = 5
+  editor.visualCursor.visualRow = 2
+  editor.cursorOffset = 2
+  api.renderer.currentFocusedEditor = editor
+
+  const shifted = (name: string, sequence: string) => ({
+    name,
+    sequence,
+    raw: sequence,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: true,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+
+  key.run({ event: shifted("h", "H") })
+  assert(editor.visualCursor.visualRow === 0, "H should jump to the top prompt viewport row")
+  key.run({ event: shifted("l", "L") })
+  assert(editor.visualCursor.visualRow === 4, "L should jump to the bottom prompt viewport row")
+  key.run({ event: shifted("m", "M") })
+  assert(editor.visualCursor.visualRow === 2, "M should jump to the middle prompt viewport row")
 }
 
 console.log("ok: adapter behavior checks passed")
