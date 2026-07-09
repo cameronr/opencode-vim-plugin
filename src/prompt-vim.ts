@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process"
 import type { KeyEvent, Renderable, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { Binding, CommandContext } from "@opentui/keymap"
 import { RGBA, type TextareaRenderable } from "@opentui/core"
@@ -24,6 +25,7 @@ const COMMAND_QUIT = "ocv-plugin.quit"
 const COMMAND_PALETTE = "command.palette.show"
 const COMMAND_EXIT = "app.exit"
 const YANK_FLASH_MS = 70
+const CLIPBOARD_TIMEOUT_MS = 1000
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -94,23 +96,31 @@ function clipboardRead() {
       : process.platform === "win32"
         ? ["powershell.exe", "-NoProfile", "-Command", "Get-Clipboard -Raw"]
         : ["sh", "-lc", "wl-paste -n 2>/dev/null || xclip -selection clipboard -out 2>/dev/null || xsel --clipboard --output 2>/dev/null"]
-  const result = Bun.spawnSync(command, { stdout: "pipe", stderr: "ignore" })
-  if (result.exitCode !== 0) return
-  return result.stdout.toString()
+  const result = spawnSync(command[0]!, command.slice(1), {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: CLIPBOARD_TIMEOUT_MS,
+    windowsHide: true,
+  })
+  if (result.status !== 0 || result.error) return
+  return result.stdout
 }
 
 function clipboardWrite(text: string) {
   const command =
     process.platform === "darwin"
-      ? `printf %s \"$OPENCODE_VIM_CLIPBOARD\" | pbcopy`
+      ? ["pbcopy"]
       : process.platform === "win32"
-        ? `Set-Clipboard -Value $env:OPENCODE_VIM_CLIPBOARD`
-        : `printf %s \"$OPENCODE_VIM_CLIPBOARD\" | { wl-copy 2>/dev/null || xclip -selection clipboard -in 2>/dev/null || xsel --clipboard --input 2>/dev/null; }`
-  Bun.spawnSync(process.platform === "win32" ? ["powershell.exe", "-NoProfile", "-Command", command] : ["sh", "-lc", command], {
-    stdout: "ignore",
-    stderr: "ignore",
-    env: { ...process.env, OPENCODE_VIM_CLIPBOARD: text },
+        ? ["powershell.exe", "-NoProfile", "-Command", "[Console]::In.ReadToEnd() | Set-Clipboard"]
+        : ["sh", "-lc", "wl-copy 2>/dev/null || xclip -selection clipboard -in 2>/dev/null || xsel --clipboard --input 2>/dev/null"]
+  const result = spawnSync(command[0]!, command.slice(1), {
+    input: text,
+    encoding: "utf8",
+    stdio: ["pipe", "ignore", "ignore"],
+    timeout: CLIPBOARD_TIMEOUT_MS,
+    windowsHide: true,
   })
+  return result.status === 0 && !result.error
 }
 
 const normalKeys = [
@@ -411,8 +421,8 @@ export function createPromptVim(
     if (!input.systemClipboardRegister || !next) return
     clipboardRegister = next
     clipboardText = next.text
-    clipboardWrite(next.text)
-    if (notify) api.ui.toast({ message: "Copied to clipboard", variant: "info" })
+    const copied = clipboardWrite(next.text)
+    if (notify && copied) api.ui.toast({ message: "Copied to clipboard", variant: "info" })
   }
 
   function submitPrompt() {
