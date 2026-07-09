@@ -33,8 +33,21 @@ function nonEmptyString(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined
 }
 
+const COMMAND_ALIASES: Record<string, string> = {
+  messages_page_up: "session.page.up",
+  messages_page_down: "session.page.down",
+  messages_line_up: "session.line.up",
+  messages_line_down: "session.line.down",
+  messages_half_page_up: "session.half.page.up",
+  messages_half_page_down: "session.half.page.down",
+  messages_first: "session.first",
+  messages_last: "session.last",
+  messages_next: "session.message.next",
+  messages_previous: "session.message.previous",
+}
+
 function commandName(value: string) {
-  return value.includes(".") ? value : value.replaceAll("_", ".")
+  return COMMAND_ALIASES[value] ?? (value.includes(".") ? value : value.replaceAll("_", "."))
 }
 
 function normalBindingKey(key: KeyLike, normalLeader: string | undefined): KeyLike {

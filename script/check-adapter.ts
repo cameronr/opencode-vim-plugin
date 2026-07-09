@@ -110,6 +110,7 @@ async function setup(options: unknown = {}) {
     normal_leader: "space",
     normal_keybinds: {
       "<leader>s": "session.list",
+      y: "messages_line_up",
       j: { command: "session.line.down", desc: "Scroll down", preventDefault: false },
     },
   })
@@ -119,6 +120,10 @@ async function setup(options: unknown = {}) {
   assert(normalLayer, "normal-mode keybind layer was not registered")
   assert(normalLayer.mode === "base", "normal keybind layer should be inactive while autocomplete is open")
   assert(normalLayer.bindings.some((binding: any) => binding.key === "<ocv-plugin-leader>s" && binding.cmd === "session.list"), "leader binding was not expanded")
+  assert(
+    normalLayer.bindings.some((binding: any) => binding.key === "y" && binding.cmd === "session.line.up"),
+    "OCV-style command alias was not resolved",
+  )
   assert(
     normalLayer.bindings.some((binding: any) => binding.key === "j" && binding.cmd === "session.line.down" && binding.preventDefault === false),
     "normal key binding was not registered",
