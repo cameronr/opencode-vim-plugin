@@ -206,7 +206,7 @@ const tui: TuiPlugin = async (api, rawOptions) => {
     api.keymap.registerLayer({
       mode: "base",
       priority: 200,
-      enabled: () => enabled() && prompt.mode() === "normal",
+      enabled: () => prompt.active() && prompt.mode() === "normal",
       bindings: options.normalBindings,
     })
   }

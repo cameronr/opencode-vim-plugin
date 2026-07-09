@@ -111,9 +111,11 @@ async function setup(options: unknown = {}) {
     normalLayer.bindings.some((binding: any) => binding.key === "j" && binding.cmd === "session.line.down" && binding.preventDefault === false),
     "normal key binding was not registered",
   )
-  assert(normalLayer.enabled() === true, "normal keybind layer should be active in normal mode even before prompt focus settles")
+  assert(normalLayer.enabled() === false, "normal keybind layer should stay inactive without a focused prompt")
   api.renderer.currentFocusedEditor = fakeTextarea()
-  assert(normalLayer.enabled() === true, "normal keybind layer should stay active for a focused prompt in normal mode")
+  assert(normalLayer.enabled() === true, "normal keybind layer should activate for a focused prompt in normal mode")
+  api.ui.dialog.open = true
+  assert(normalLayer.enabled() === false, "normal keybind layer should stay inactive while a dialog is open")
 }
 
 {
