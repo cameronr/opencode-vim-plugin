@@ -119,7 +119,7 @@ async function setup(options: unknown = {}) {
 }
 
 {
-  const { layers, api, disposers } = await setup()
+  const { layers, api, dispatched, disposers } = await setup()
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.quit"))
   assert(commandLayer?.mode === undefined, "vim palette commands should remain reachable while autocomplete is open")
   const bindingLayer = layers.find((layer) => layer.priority === 100 && layer.bindings?.some((binding: any) => binding.cmd === "ocv-plugin.key"))
@@ -133,6 +133,26 @@ async function setup(options: unknown = {}) {
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const editor = fakeTextarea()
   api.renderer.currentFocusedEditor = editor
+  const shiftSemicolon: any = {
+    name: ";",
+    sequence: ":",
+    raw: ":",
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: true,
+    preventDefault() {
+      this.defaultPrevented = true
+    },
+    stopPropagation() {
+      this.propagationStopped = true
+    },
+  }
+  const colonHandled = key.run({ event: shiftSemicolon })
+  assert(colonHandled === true, "shift+; should be handled as :")
+  assert(dispatched.at(-1) === "command.palette.show", "shift+; should open the command palette")
+  assert(shiftSemicolon.defaultPrevented === true, "shift+; should prevent default")
+
   const event: any = {
     name: "/",
     sequence: "/",

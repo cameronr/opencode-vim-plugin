@@ -184,6 +184,9 @@ const normalKeys = [
   "z",
   "slash",
   "shift+slash",
+  "shift+;",
+  "shift+'",
+  "shift+`",
   ":",
   "\"",
   "'",
@@ -291,6 +294,9 @@ const insertPrintableKeys = [
   "shift+,",
   "shift+.",
   "shift+slash",
+  "shift+;",
+  "shift+'",
+  "shift+`",
   "~",
 ]
 
