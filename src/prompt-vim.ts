@@ -562,6 +562,7 @@ export function createPromptVim(
         if (state.mode() === "normal" && event.name === ":" && !hasModifier(event)) {
           event.preventDefault()
           event.stopPropagation()
+          state.clearPending()
           api.keymap.dispatchCommand(COMMAND_PALETTE)
           return true
         }

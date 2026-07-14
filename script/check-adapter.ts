@@ -149,7 +149,22 @@ async function setup(options: unknown = {}) {
 
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const editor = fakeTextarea()
+  const originalRender = editor.render
   api.renderer.currentFocusedEditor = editor
+  editor.plainText = "word"
+  const normalEvent = (name: string) => ({
+    name,
+    sequence: name,
+    raw: name,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+  key.run({ event: normalEvent("d") })
+
   const shiftSemicolon: any = {
     name: ";",
     sequence: ":",
@@ -170,6 +185,11 @@ async function setup(options: unknown = {}) {
   assert(dispatched.at(-1) === "command.palette.show", "shift+; should open the command palette")
   assert(shiftSemicolon.defaultPrevented === true, "shift+; should prevent default")
 
+  key.run({ event: normalEvent("w") })
+  assert(editor.plainText === "word" && editor.cursorOffset === 4, ": should clear a pending operator before opening the palette")
+  editor.plainText = ""
+  editor.cursorOffset = 0
+
   const event: any = {
     name: "/",
     sequence: "/",
@@ -185,7 +205,6 @@ async function setup(options: unknown = {}) {
       this.propagationStopped = true
     },
   }
-  const originalRender = editor.render
   const handled = key.run({ event })
   assert(handled === true, "empty slash should be handled")
   assert(editor.plainText === "/", "empty slash should enter insert text")
