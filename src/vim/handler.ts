@@ -1702,8 +1702,13 @@ export function createVimHandler(input: {
     }
 
     if (key === "~" && !hasModifier(event)) {
+      const count = takeCount()
       edit(() => {
-        toggleCase(input.textarea())
+        for (let index = 0; index < count; index++) {
+          const before = input.textarea().cursorOffset
+          toggleCase(input.textarea())
+          if (input.textarea().cursorOffset === before) break
+        }
       })
       event.preventDefault()
       return true
