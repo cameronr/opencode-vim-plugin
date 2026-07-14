@@ -111,6 +111,12 @@ async function setup(options: unknown = {}) {
     normal_keybinds: {
       "<leader>s": "session.list",
       y: "messages_line_up",
+      u: "messages_undo",
+      r: "messages_redo",
+      m: "messages_last_user",
+      t: "tool_details",
+      n: "session_child_cycle",
+      p: "session_child_cycle_reverse",
       j: { command: "session.line.down", desc: "Scroll down", preventDefault: false },
     },
   })
@@ -120,10 +126,21 @@ async function setup(options: unknown = {}) {
   assert(normalLayer, "normal-mode keybind layer was not registered")
   assert(normalLayer.mode === "base", "normal keybind layer should be inactive while autocomplete is open")
   assert(normalLayer.bindings.some((binding: any) => binding.key === "<ocv-plugin-leader>s" && binding.cmd === "session.list"), "leader binding was not expanded")
-  assert(
-    normalLayer.bindings.some((binding: any) => binding.key === "y" && binding.cmd === "session.line.up"),
-    "OCV-style command alias was not resolved",
-  )
+  const aliases = {
+    y: "session.line.up",
+    u: "session.undo",
+    r: "session.redo",
+    m: "session.messages_last_user",
+    t: "session.toggle.actions",
+    n: "session.child.next",
+    p: "session.child.previous",
+  }
+  for (const [key, command] of Object.entries(aliases)) {
+    assert(
+      normalLayer.bindings.some((binding: any) => binding.key === key && binding.cmd === command),
+      `OCV-style command alias ${command} was not resolved`,
+    )
+  }
   assert(
     normalLayer.bindings.some((binding: any) => binding.key === "j" && binding.cmd === "session.line.down" && binding.preventDefault === false),
     "normal key binding was not registered",
