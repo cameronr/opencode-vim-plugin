@@ -511,6 +511,33 @@ async function setup(options: unknown = {}) {
   const { layers, api } = await setup()
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const first: any = fakeTextarea()
+  first.plainText = "old"
+  const second: any = fakeTextarea()
+  second.plainText = "new"
+  const event = (name: string) => ({
+    name,
+    sequence: name,
+    raw: name,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+
+  api.renderer.currentFocusedEditor = first
+  key.run({ event: event("x") })
+  api.renderer.currentFocusedEditor = second
+  key.run({ event: event("u") })
+  assert(second.plainText === "new", "switching prompt editors should isolate Vim undo history")
+}
+
+{
+  const { layers, api } = await setup()
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const event = (name: string, shift = false, sequence = name) => ({
     name,
     sequence,
