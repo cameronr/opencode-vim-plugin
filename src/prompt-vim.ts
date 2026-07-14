@@ -494,6 +494,9 @@ export function createPromptVim(
       return !flashSpan || selection.start !== flashSpan.start || selection.end !== flashSpan.end
     },
     submit: submitPrompt,
+    commandPalette() {
+      api.keymap.dispatchCommand(COMMAND_PALETTE)
+    },
     flash: flashYank,
     scroll(action) {
       if (action === "line-down") api.keymap.dispatchCommand("session.line.down")
@@ -557,13 +560,6 @@ export function createPromptVim(
           if (input.enterSubmit) submitPrompt()
           else textarea().insertText("\n")
           applyCursorStyle()
-          return true
-        }
-        if (state.mode() === "normal" && event.name === ":" && !hasModifier(event)) {
-          event.preventDefault()
-          event.stopPropagation()
-          state.clearPending()
-          api.keymap.dispatchCommand(COMMAND_PALETTE)
           return true
         }
         const handled = handler.handleKey(event)

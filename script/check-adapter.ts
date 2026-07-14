@@ -11,7 +11,11 @@ function fakeTextarea() {
     plainText: "",
     cursorOffset: 0,
     focused: true,
-    editBuffer: {},
+    editBuffer: {
+      offsetToPosition(offset: number) {
+        return { row: 0, col: offset }
+      },
+    },
     editorView: {
       getSelection: () => null,
       setSelection() {},
@@ -29,7 +33,10 @@ function fakeTextarea() {
       this.plainText = this.plainText.slice(0, this.cursorOffset) + text + this.plainText.slice(this.cursorOffset)
       this.cursorOffset += text.length
     },
-    deleteRange() {},
+    deleteRange(_startRow: number, startCol: number, _endRow: number, endCol: number) {
+      this.plainText = this.plainText.slice(0, startCol) + this.plainText.slice(endCol)
+      this.cursorOffset = startCol
+    },
     setText(text: string) {
       this.plainText = text
       this.cursorOffset = text.length
@@ -168,7 +175,6 @@ async function setup(options: unknown = {}) {
   const editor = fakeTextarea()
   const originalRender = editor.render
   api.renderer.currentFocusedEditor = editor
-  editor.plainText = "word"
   const normalEvent = (name: string) => ({
     name,
     sequence: name,
@@ -180,9 +186,7 @@ async function setup(options: unknown = {}) {
     preventDefault() {},
     stopPropagation() {},
   })
-  key.run({ event: normalEvent("d") })
-
-  const shiftSemicolon: any = {
+  const colonEvent = () => ({
     name: ";",
     sequence: ":",
     raw: ":",
@@ -190,20 +194,54 @@ async function setup(options: unknown = {}) {
     meta: false,
     super: false,
     shift: true,
+    defaultPrevented: false,
     preventDefault() {
       this.defaultPrevented = true
     },
-    stopPropagation() {
-      this.propagationStopped = true
-    },
-  }
-  const colonHandled = key.run({ event: shiftSemicolon })
-  assert(colonHandled === true, "shift+; should be handled as :")
-  assert(dispatched.at(-1) === "command.palette.show", "shift+; should open the command palette")
-  assert(shiftSemicolon.defaultPrevented === true, "shift+; should prevent default")
+    stopPropagation() {},
+  })
 
+  const plainColon = colonEvent()
+  const colonHandled = key.run({ event: plainColon })
+  assert(colonHandled === true, "shift+; should be handled as :")
+  assert(dispatched.at(-1) === "command.palette.show", "plain : should open the command palette")
+  assert(plainColon.defaultPrevented === true, "shift+; should prevent default")
+  const paletteDispatches = dispatched.length
+
+  editor.plainText = "a:b"
+  editor.cursorOffset = 0
+  key.run({ event: normalEvent("f") })
+  key.run({ event: colonEvent() })
+  assert(editor.cursorOffset === 1, "f: should find the next colon")
+  assert(dispatched.length === paletteDispatches, "f: should not open the command palette")
+
+  editor.plainText = "ab:c"
+  editor.cursorOffset = 0
+  key.run({ event: normalEvent("t") })
+  key.run({ event: colonEvent() })
+  assert(editor.cursorOffset === 1, "t: should move until the next colon")
+
+  editor.plainText = "abc"
+  editor.cursorOffset = 1
+  key.run({ event: normalEvent("r") })
+  key.run({ event: colonEvent() })
+  assert(editor.plainText === "a:c", "r: should replace the current character with a colon")
+
+  editor.plainText = "ab:cd"
+  editor.cursorOffset = 0
+  key.run({ event: normalEvent("d") })
+  key.run({ event: normalEvent("f") })
+  key.run({ event: colonEvent() })
+  assert(editor.plainText === "cd", "df: should delete through the next colon")
+
+  editor.plainText = "word"
+  editor.cursorOffset = 0
+  key.run({ event: normalEvent("d") })
+  key.run({ event: colonEvent() })
   key.run({ event: normalEvent("w") })
-  assert(editor.plainText === "word" && editor.cursorOffset === 4, ": should clear a pending operator before opening the palette")
+  assert(editor.plainText === "word" && editor.cursorOffset === 4, "an invalid d: should not leave a pending delete")
+  assert(dispatched.length === paletteDispatches, "an operator-pending : should not open the command palette")
+
   editor.plainText = ""
   editor.cursorOffset = 0
 
