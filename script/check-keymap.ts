@@ -9,7 +9,7 @@ const api = {
   renderer: { currentFocusedEditor: null },
 } as any
 
-const prompt = createPromptVim(api, { enabled: () => true, initialMode: "normal" })
+const prompt = createPromptVim(api, { enabled: () => true, initialMode: "normal", langmap: () => ({ р: "h" }) })
 const harness = createTestKeymap({ defaultKeys: true })
 
 harness.keymap.registerLayer({

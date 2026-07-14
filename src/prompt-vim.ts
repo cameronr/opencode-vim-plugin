@@ -571,7 +571,11 @@ export function createPromptVim(
     },
   ]
 
-  const bindings: Binding<Renderable, KeyEvent>[] = unique([...normalKeys, ...insertPrintableKeys]).map((key) => ({
+  const bindings: Binding<Renderable, KeyEvent>[] = unique([
+    ...normalKeys,
+    ...insertPrintableKeys,
+    ...Object.keys(input.langmap?.() ?? {}),
+  ]).map((key) => ({
     key,
     cmd: COMMAND_KEY,
     preventDefault: false,

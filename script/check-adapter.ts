@@ -396,4 +396,34 @@ async function setup(options: unknown = {}) {
   assert(editor.plainText === "", "submitting should clear Vim undo history from the previous prompt")
 }
 
+{
+  const { layers, api } = await setup({ vim_langmap: { р: "h" } })
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const bindingLayer = layers.find((layer) => layer.priority === 100)
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const editor: any = fakeTextarea()
+  editor.plainText = "word"
+  editor.cursorOffset = 2
+  api.renderer.currentFocusedEditor = editor
+
+  assert(
+    bindingLayer.bindings.some((binding: any) => binding.key === "р" && binding.cmd === "ocv-plugin.key"),
+    "non-ASCII langmap keys should be registered with the keymap",
+  )
+  key.run({
+    event: {
+      name: "р",
+      sequence: "р",
+      raw: "р",
+      ctrl: false,
+      meta: false,
+      super: false,
+      shift: false,
+      preventDefault() {},
+      stopPropagation() {},
+    },
+  })
+  assert(editor.cursorOffset === 1, "non-ASCII langmap keys should reach the Vim handler")
+}
+
 console.log("ok: adapter behavior checks passed")
