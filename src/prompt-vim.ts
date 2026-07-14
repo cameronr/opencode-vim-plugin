@@ -328,6 +328,9 @@ export function createPromptVim(
     langmap?: () => Record<string, string> | undefined
   },
 ) {
+  let lastPromptEditor: TextareaLike | undefined
+  let onPromptEditorChange = (_previous: TextareaLike | undefined) => {}
+
   function currentPromptEditor() {
     if (api.ui.dialog.open) return
     const route = api.route.current.name
@@ -335,6 +338,11 @@ export function createPromptVim(
     const editor = api.renderer.currentFocusedEditor
     if (!isTextareaLike(editor)) return
     if (editor.focused === false) return
+    if (editor !== lastPromptEditor) {
+      const previous = lastPromptEditor
+      lastPromptEditor = editor
+      onPromptEditorChange(previous)
+    }
     return editor
   }
 
@@ -526,6 +534,14 @@ export function createPromptVim(
     autocomplete: () => false,
     langmap: input.langmap,
   })
+
+  onPromptEditorChange = (previous) => {
+    const mode = state.mode()
+    if (previous && (mode === "visual" || mode === "visual-line") && !previous.isDestroyed) previous.clearSelection()
+    handler.cancelPending()
+    state.resetHistory()
+    if (mode === "visual" || mode === "visual-line" || mode === "replace") state.setMode("normal")
+  }
 
   const indicator = useVimIndicator({
     enabled: input.enabled,

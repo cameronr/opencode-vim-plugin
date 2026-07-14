@@ -17,8 +17,16 @@ function fakeTextarea() {
       },
     },
     editorView: {
-      getSelection: () => null,
-      setSelection() {},
+      selection: null as { start: number; end: number } | null,
+      getSelection() {
+        return this.selection
+      },
+      setSelection(start: number, end: number) {
+        this.selection = { start, end }
+      },
+      resetSelection() {
+        this.selection = null
+      },
     },
     visualCursor: { visualRow: 0, visualCol: 0 },
     height: 1,
@@ -65,6 +73,10 @@ function fakeTextarea() {
       return { markDirty() {} }
     },
     requestRender() {},
+    updateSelectionForMovement() {},
+    clearSelection() {
+      this.editorView.resetSelection()
+    },
   }
 }
 
@@ -424,6 +436,49 @@ async function setup(options: unknown = {}) {
     },
   })
   assert(editor.cursorOffset === 1, "non-ASCII langmap keys should reach the Vim handler")
+}
+
+{
+  const { layers, api } = await setup()
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const event = (name: string, shift = false, sequence = name) => ({
+    name,
+    sequence,
+    raw: sequence,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+
+  const visualFirst: any = fakeTextarea()
+  visualFirst.plainText = "old"
+  const visualSecond: any = fakeTextarea()
+  visualSecond.plainText = "new"
+  visualSecond.cursorOffset = 1
+  api.renderer.currentFocusedEditor = visualFirst
+  key.run({ event: event("v") })
+  key.run({ event: event("l") })
+  assert(visualFirst.editorView.getSelection(), "visual mode should select text in the first editor")
+  api.renderer.currentFocusedEditor = visualSecond
+  key.run({ event: event("x") })
+  assert(!visualFirst.editorView.getSelection(), "switching editors should clear the previous visual selection")
+  assert(visualSecond.plainText === "nw", "switching editors should leave visual mode before handling the next key")
+
+  const replaceFirst: any = fakeTextarea()
+  replaceFirst.plainText = "old"
+  const replaceSecond: any = fakeTextarea()
+  replaceSecond.plainText = "new"
+  replaceSecond.cursorOffset = 1
+  api.renderer.currentFocusedEditor = replaceFirst
+  key.run({ event: event("r", true, "R") })
+  key.run({ event: event("x") })
+  api.renderer.currentFocusedEditor = replaceSecond
+  key.run({ event: event("z") })
+  assert(replaceSecond.plainText === "new", "switching editors should leave replace mode before handling the next key")
 }
 
 console.log("ok: adapter behavior checks passed")
