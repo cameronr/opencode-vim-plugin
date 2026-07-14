@@ -427,6 +427,7 @@ export function createPromptVim(
 
   function submitPrompt() {
     textarea().submit()
+    state.resetHistory()
     state.setMode(input.insertAfterSubmit ? "insert" : "normal")
   }
 
@@ -577,6 +578,8 @@ export function createPromptVim(
   }))
 
   function dispose() {
+    handler.cancelPending()
+    state.cancelEdit()
     if (flashTimer) {
       clearTimeout(flashTimer)
       flashTimer = undefined

@@ -265,9 +265,14 @@ async function setup(options: unknown = {}) {
   assert(editor.plainText === "/", "empty slash should enter insert text")
   assert(event.defaultPrevented === true, "empty slash should prevent default")
   assert(editor.render !== originalRender, "focused prompt render should be patched for block cursor drawing")
+  key.run({ event: normalEvent("escape") })
+  const originalInsertText = editor.insertText
+  key.run({ event: normalEvent("i") })
+  assert(editor.insertText !== originalInsertText, "insert mode should install the repeat recorder")
   assert(disposers.length === 1, "prompt cleanup should be registered with plugin lifecycle")
   await disposers[0]?.()
   assert(editor.render === originalRender, "prompt cleanup should restore patched render")
+  assert(editor.insertText === originalInsertText, "prompt cleanup should restore repeat recorder methods")
 }
 
 {
@@ -363,6 +368,32 @@ async function setup(options: unknown = {}) {
   assert(editor.visualCursor.visualRow === 4, "L should jump to the bottom prompt viewport row")
   key.run({ event: shifted("m", "M") })
   assert(editor.visualCursor.visualRow === 2, "M should jump to the middle prompt viewport row")
+}
+
+{
+  const { layers, api } = await setup()
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const editor: any = fakeTextarea()
+  editor.plainText = "draft"
+  editor.submit = () => editor.setText("")
+  api.renderer.currentFocusedEditor = editor
+  const event = (name: string) => ({
+    name,
+    sequence: name,
+    raw: name,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+
+  key.run({ event: event("x") })
+  key.run({ event: event("return") })
+  key.run({ event: event("u") })
+  assert(editor.plainText === "", "submitting should clear Vim undo history from the previous prompt")
 }
 
 console.log("ok: adapter behavior checks passed")
