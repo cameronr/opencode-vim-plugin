@@ -1422,10 +1422,14 @@ export function createVimHandler(input: {
 
     if (key === "p" && !event.shift && !hasModifier(event)) {
       const reg = register()
+      const count = takeCount()
       edit(() => {
         const deleted = input.pasteOverSelection?.() !== false ? pasteOverSelection(input.textarea(), reg) : null
         if (deleted) setRegister(deleted)
         else pasteAfter(input.textarea(), reg)
+        const firstCursor = input.textarea().cursorOffset
+        repeatCount(count - 1, () => pasteAfter(input.textarea(), reg))
+        if (reg?.linewise) input.textarea().cursorOffset = firstCursor
       })
       event.preventDefault()
       return true
@@ -1433,10 +1437,14 @@ export function createVimHandler(input: {
 
     if (isShifted(event, "p") && !hasModifier(event)) {
       const reg = register()
+      const count = takeCount()
       edit(() => {
         const deleted = input.pasteOverSelection?.() !== false ? pasteOverSelection(input.textarea(), reg) : null
         if (deleted) setRegister(deleted)
         else pasteBefore(input.textarea(), reg)
+        const firstCursor = input.textarea().cursorOffset
+        repeatCount(count - 1, () => pasteAfter(input.textarea(), reg))
+        if (reg?.linewise) input.textarea().cursorOffset = firstCursor
       })
       event.preventDefault()
       return true
