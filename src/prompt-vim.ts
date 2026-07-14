@@ -602,7 +602,10 @@ export function createPromptVim(
           event.preventDefault()
           event.stopPropagation()
           if (input.enterSubmit) submitPrompt()
-          else textarea().insertText("\n")
+          else {
+            if (state.isReplace()) handler.recordInsertText("\n")
+            textarea().insertText("\n")
+          }
           applyCursorStyle()
           return true
         }

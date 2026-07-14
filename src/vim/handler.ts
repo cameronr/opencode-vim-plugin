@@ -2248,6 +2248,7 @@ export function createVimHandler(input: {
 
   return {
     cancelPending,
+    recordInsertText: repeat.recordInsertText,
     handleKey(event: VimEvent) {
       if (!input.enabled()) return false
 

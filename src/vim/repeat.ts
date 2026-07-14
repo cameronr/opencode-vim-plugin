@@ -18,11 +18,13 @@ type VimRepeatRecorder = {
   setText: TextareaRenderable["setText"]
 }
 
+type VimReplaceEdit = { type: "replace" | "insert"; text: string }
+
 type VimActiveRepeat = {
   before: VimSnapshot
   base: VimSnapshot
   setup: () => boolean | void
-} & ({ type: "patch"; edits: VimTextEdit[]; recorder?: VimRepeatRecorder } | { type: "replace"; chars: string[] })
+} & ({ type: "patch"; edits: VimTextEdit[]; recorder?: VimRepeatRecorder } | { type: "replace"; edits: VimReplaceEdit[] })
 
 type VimPatchRepeat = Extract<VimActiveRepeat, { type: "patch" }>
 
@@ -238,7 +240,7 @@ export function createVimRepeat(input: {
         base: input.snapshot(),
         setup: run ?? (() => {}),
       }
-      activeRepeat = options?.replace ? { ...next, type: "replace", chars: [] } : { ...next, type: "patch", edits: [] }
+      activeRepeat = options?.replace ? { ...next, type: "replace", edits: [] } : { ...next, type: "patch", edits: [] }
       if (activeRepeat.type === "patch") startRecording(activeRepeat)
     }
   }
@@ -269,11 +271,15 @@ export function createVimRepeat(input: {
           return pushReplay(before, repeated)
         },
       })
-    if (active.type === "replace" && active.chars.length) {
+    if (active.type === "replace" && active.edits.length) {
+      const replaced = active.edits.some((edit) => edit.type === "replace")
       recordCommittedRepeat(() => {
         const start = input.state.replace()
-        active.chars.forEach((char) => replaceUnderCursor(input.textarea(), char))
-        if (start !== null) input.textarea().cursorOffset = Math.max(start, input.textarea().cursorOffset - 1)
+        active.edits.forEach((edit) => {
+          if (edit.type === "replace") replaceUnderCursor(input.textarea(), edit.text)
+          else input.textarea().insertText(edit.text)
+        })
+        if (replaced && start !== null) input.textarea().cursorOffset = Math.max(start, input.textarea().cursorOffset - 1)
       })
       return
     }
@@ -303,7 +309,10 @@ export function createVimRepeat(input: {
     begin,
     commit,
     recordReplaceChar(char: string) {
-      if (activeRepeat?.type === "replace") activeRepeat.chars.push(char)
+      if (activeRepeat?.type === "replace") activeRepeat.edits.push({ type: "replace", text: char })
+    },
+    recordInsertText(text: string) {
+      if (activeRepeat?.type === "replace") activeRepeat.edits.push({ type: "insert", text })
     },
     cancel,
   }
