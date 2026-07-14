@@ -22,10 +22,10 @@
     "prepack": "bun run check"
   },
   "engines": {
-    "opencode": ">=1.17.9"
+    "opencode": ">=1.17.10"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.17.9",
+    "@opencode-ai/plugin": ">=1.17.10",
     "@opentui/core": ">=0.4.2",
     "@opentui/keymap": ">=0.4.2",
     "@opentui/solid": ">=0.4.2"
@@ -37,7 +37,7 @@
     "solid-js": "1.9.12"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.17.9",
+    "@opencode-ai/plugin": "^1.17.10",
     "@types/bun": "latest",
     "typescript": "^5.9.0"
   }
