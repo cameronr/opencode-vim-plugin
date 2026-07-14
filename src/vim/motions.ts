@@ -228,20 +228,18 @@ export function moveLineDown(textarea: TextareaRenderable, column?: VimWantedCol
   textarea.cursorOffset = moveDown(text, textarea.cursorOffset, column)
 }
 
-// Display-line motions delegate wrap handling to the editor view.
+// Use TextareaRenderable's public APIs so wrapping matches OpenTUI.
 export function moveVisualLineUp(textarea: TextareaRenderable) {
-  const view = textarea.editorView as { moveUpVisual?: () => void }
-  if (typeof view?.moveUpVisual === "function") {
-    view.moveUpVisual()
+  if (typeof textarea.moveCursorUp === "function") {
+    textarea.moveCursorUp()
     return
   }
   moveLineUp(textarea)
 }
 
 export function moveVisualLineDown(textarea: TextareaRenderable) {
-  const view = textarea.editorView as { moveDownVisual?: () => void }
-  if (typeof view?.moveDownVisual === "function") {
-    view.moveDownVisual()
+  if (typeof textarea.moveCursorDown === "function") {
+    textarea.moveCursorDown()
     return
   }
   moveLineDown(textarea)
