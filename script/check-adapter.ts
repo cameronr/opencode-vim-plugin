@@ -186,6 +186,7 @@ async function setup(options: unknown = {}) {
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const editor = fakeTextarea()
   const originalRender = editor.render
+  const originalSubmit = editor.submit
   api.renderer.currentFocusedEditor = editor
   const normalEvent = (name: string) => ({
     name,
@@ -284,6 +285,7 @@ async function setup(options: unknown = {}) {
   assert(disposers.length === 1, "prompt cleanup should be registered with plugin lifecycle")
   await disposers[0]?.()
   assert(editor.render === originalRender, "prompt cleanup should restore patched render")
+  assert(editor.submit === originalSubmit, "prompt cleanup should restore patched submit")
   assert(editor.insertText === originalInsertText, "prompt cleanup should restore repeat recorder methods")
 }
 
@@ -406,6 +408,35 @@ async function setup(options: unknown = {}) {
   key.run({ event: event("return") })
   key.run({ event: event("u") })
   assert(editor.plainText === "", "submitting should clear Vim undo history from the previous prompt")
+}
+
+{
+  const { layers, api } = await setup({ insert_after_submit: true })
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const editor: any = fakeTextarea()
+  editor.submit = () => editor.setText("")
+  const originalInsertText = editor.insertText
+  api.renderer.currentFocusedEditor = editor
+  const event = (name: string) => ({
+    name,
+    sequence: name,
+    raw: name,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+
+  key.run({ event: event("i") })
+  editor.insertText("draft")
+  editor.submit()
+  assert(editor.insertText === originalInsertText, "external prompt submission should close the repeat recorder")
+  key.run({ event: event("escape") })
+  key.run({ event: event("u") })
+  assert(editor.plainText === "", "external prompt submission should clear Vim undo history")
 }
 
 {

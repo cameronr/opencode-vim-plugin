@@ -13,6 +13,8 @@ const PROMPT_RENDER_PATCH = Symbol("ocv-plugin.prompt.render.patch")
 type PromptRenderPatch = {
   original: TextareaLike["render"]
   patched: TextareaLike["render"]
+  originalSubmit: TextareaLike["submit"]
+  patchedSubmit: TextareaLike["submit"]
 }
 
 type TextareaLike = TextareaRenderable & {
@@ -330,6 +332,7 @@ export function createPromptVim(
 ) {
   let lastPromptEditor: TextareaLike | undefined
   let onPromptEditorChange = (_previous: TextareaLike | undefined) => {}
+  let onPromptSubmit = () => {}
 
   function currentPromptEditor() {
     if (api.ui.dialog.open) return
@@ -368,8 +371,15 @@ export function createPromptVim(
       buffer.buffers.fg.set(selectedForeground(api, api.theme.current.text).buffer.subarray(0, 4), offset)
       buffer.buffers.bg.set(api.theme.current.text.buffer.subarray(0, 4), offset)
     }
-    editor[PROMPT_RENDER_PATCH] = { original, patched }
+    const originalSubmit = editor.submit
+    const patchedSubmit: TextareaLike["submit"] = (...args) => {
+      const result = originalSubmit.apply(editor, args)
+      if (result !== false) onPromptSubmit()
+      return result
+    }
+    editor[PROMPT_RENDER_PATCH] = { original, patched, originalSubmit, patchedSubmit }
     editor.render = patched
+    editor.submit = patchedSubmit
     patchedEditors.add(editor)
   }
 
@@ -434,9 +444,9 @@ export function createPromptVim(
   }
 
   function submitPrompt() {
-    textarea().submit()
-    state.resetHistory()
-    state.setMode(input.insertAfterSubmit ? "insert" : "normal")
+    const editor = textarea()
+    patchPromptEditor(editor)
+    editor.submit()
   }
 
   function flashYank(span: { start: number; end: number }) {
@@ -542,6 +552,11 @@ export function createPromptVim(
     state.resetHistory()
     if (mode === "visual" || mode === "visual-line" || mode === "replace") state.setMode("normal")
   }
+  onPromptSubmit = () => {
+    handler.cancelPending()
+    state.resetHistory()
+    state.setMode(input.insertAfterSubmit ? "insert" : "normal")
+  }
 
   const indicator = useVimIndicator({
     enabled: input.enabled,
@@ -609,6 +624,7 @@ export function createPromptVim(
       const patch = editor[PROMPT_RENDER_PATCH]
       if (!patch) continue
       if (editor.render === patch.patched) editor.render = patch.original
+      if (editor.submit === patch.patchedSubmit) editor.submit = patch.originalSubmit
       delete editor[PROMPT_RENDER_PATCH]
       if (!editor.isDestroyed) {
         if (flashSpan) {
