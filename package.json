@@ -31,11 +31,12 @@
     "README.md"
   ],
   "scripts": {
+    "test": "bun test",
     "build": "bun run script/build.ts",
     "typecheck": "tsc --noEmit",
     "check:keymap": "bun run script/check-keymap.ts",
     "check:adapter": "bun run script/check-adapter.ts",
-    "check": "bun run typecheck && bun run check:keymap && bun run build && bun run check:adapter",
+    "check": "bun run typecheck && bun run test && bun run check:keymap && bun run build && bun run check:adapter",
     "prepack": "bun run check"
   },
   "engines": {

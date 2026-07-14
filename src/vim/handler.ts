@@ -199,7 +199,7 @@ export function createVimHandler(input: {
   vimEscapeSequence?: string
 }) {
   let wantedColumn: VimWantedColumn | undefined
-  let visualWantedColumn: number | undefined
+  let visualWantedColumn: VimWantedColumn | undefined
   let pendingOperatorCount = 1
   let pendingOperatorFind: { operation: VimOperator; find: VimFindOperator } | undefined
   let pendingOperatorDisplay: VimOperator | undefined
@@ -349,6 +349,7 @@ export function createVimHandler(input: {
   }
 
   function preservesWantedColumn(event: VimEvent, key: string) {
+    if (key === "g" && !event.shift && !hasModifier(event)) return true
     if ((key === "j" || key === "k" || key === "down" || key === "up") && !event.shift && !hasModifier(event))
       return true
     return (key === "v" || isShifted(event, "v")) && !hasModifier(event)
@@ -556,12 +557,19 @@ export function createVimHandler(input: {
     return substituteLine(textarea, anchor)
   }
 
-  function moveDisplayVertical(direction: "up" | "down", count: number, column: number | undefined) {
+  function prepareDisplayWantedColumn() {
+    const view = input.textarea().editorView as { getVisualCursor?: () => { visualCol: number } }
+    visualWantedColumn ??= wantedColumn === "end" ? "end" : view.getVisualCursor?.().visualCol
+    clearWantedColumn()
+  }
+
+  function moveDisplayVertical(direction: "up" | "down", count: number, column: VimWantedColumn | undefined) {
     repeatCount(count, () => {
       direction === "down" ? moveVisualLineDown(input.textarea()) : moveVisualLineUp(input.textarea())
       // Native visual moves can land on trailing newlines.
       clampCursorToLine(input.textarea())
-      if (column !== undefined) alignVisualColumn(input.textarea(), column)
+      if (column === "end") moveVisualLineEnd(input.textarea())
+      else if (column !== undefined) alignVisualColumn(input.textarea(), column)
     })
   }
 
@@ -1046,10 +1054,8 @@ export function createVimHandler(input: {
         } else {
           const direction = key === "j" || key === "down" ? "down" : "up"
           const count = takeCount()
-          const view = input.textarea().editorView as { getVisualCursor?: () => { visualCol: number } }
-          visualWantedColumn ??= view.getVisualCursor?.().visualCol
+          prepareDisplayWantedColumn()
           input.state.clearPending()
-          clearWantedColumn()
           moveDisplayVertical(direction, count, visualWantedColumn)
         }
         event.preventDefault()
@@ -1064,6 +1070,7 @@ export function createVimHandler(input: {
           input.state.clearPending()
           clearWantedColumn()
           moveDisplayHorizontal(key, count)
+          if (key === "$") visualWantedColumn = "end"
         }
         event.preventDefault()
         return true
@@ -1076,6 +1083,7 @@ export function createVimHandler(input: {
     if (jump.handled) {
       if (jump.action) {
         input.state.clearPending()
+        clearWantedColumn()
         clearVisualWantedColumn()
         input.jump(jump.action)
       }
