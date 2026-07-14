@@ -15,6 +15,8 @@ type PromptRenderPatch = {
   patched: TextareaLike["render"]
   originalSubmit: TextareaLike["submit"]
   patchedSubmit: TextareaLike["submit"]
+  originalPaste: TextareaLike["onPaste"]
+  patchedPaste: NonNullable<TextareaLike["onPaste"]>
 }
 
 type TextareaLike = TextareaRenderable & {
@@ -377,9 +379,19 @@ export function createPromptVim(
       if (result !== false) onPromptSubmit()
       return result
     }
-    editor[PROMPT_RENDER_PATCH] = { original, patched, originalSubmit, patchedSubmit }
+    const originalPaste = editor.onPaste
+    const patchedPaste: NonNullable<TextareaLike["onPaste"]> = (event) => {
+      if (input.enabled() && state.mode() !== "insert" && state.mode() !== "replace") {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      return originalPaste?.call(editor, event)
+    }
+    editor[PROMPT_RENDER_PATCH] = { original, patched, originalSubmit, patchedSubmit, originalPaste, patchedPaste }
     editor.render = patched
     editor.submit = patchedSubmit
+    editor.onPaste = patchedPaste
     patchedEditors.add(editor)
   }
 
@@ -625,6 +637,7 @@ export function createPromptVim(
       if (!patch) continue
       if (editor.render === patch.patched) editor.render = patch.original
       if (editor.submit === patch.patchedSubmit) editor.submit = patch.originalSubmit
+      if (editor.onPaste === patch.patchedPaste) editor.onPaste = patch.originalPaste
       delete editor[PROMPT_RENDER_PATCH]
       if (!editor.isDestroyed) {
         if (flashSpan) {

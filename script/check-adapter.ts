@@ -37,6 +37,7 @@ function fakeTextarea() {
     selectionFg: undefined,
     showCursor: true,
     cursorStyle: undefined,
+    onPaste: undefined as ((event: any) => void) | undefined,
     insertText(text: string) {
       this.plainText = this.plainText.slice(0, this.cursorOffset) + text + this.plainText.slice(this.cursorOffset)
       this.cursorOffset += text.length
@@ -187,6 +188,7 @@ async function setup(options: unknown = {}) {
   const editor = fakeTextarea()
   const originalRender = editor.render
   const originalSubmit = editor.submit
+  const originalPaste = editor.onPaste
   api.renderer.currentFocusedEditor = editor
   const normalEvent = (name: string) => ({
     name,
@@ -286,6 +288,7 @@ async function setup(options: unknown = {}) {
   await disposers[0]?.()
   assert(editor.render === originalRender, "prompt cleanup should restore patched render")
   assert(editor.submit === originalSubmit, "prompt cleanup should restore patched submit")
+  assert(editor.onPaste === originalPaste, "prompt cleanup should restore patched paste")
   assert(editor.insertText === originalInsertText, "prompt cleanup should restore repeat recorder methods")
 }
 
@@ -437,6 +440,41 @@ async function setup(options: unknown = {}) {
   key.run({ event: event("escape") })
   key.run({ event: event("u") })
   assert(editor.plainText === "", "external prompt submission should clear Vim undo history")
+}
+
+{
+  const { layers, api } = await setup()
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const editor: any = fakeTextarea()
+  const stats: { nativePastes: number } = { nativePastes: 0 }
+  editor.onPaste = () => stats.nativePastes++
+  api.renderer.currentFocusedEditor = editor
+  const keyEvent = (name: string) => ({
+    name,
+    sequence: name,
+    raw: name,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+  let prevented = false
+  const pasteEvent = {
+    preventDefault() {
+      prevented = true
+    },
+    stopPropagation() {},
+  }
+
+  key.run({ event: keyEvent("h") })
+  editor.onPaste(pasteEvent)
+  assert(prevented && stats.nativePastes === 0, "bracketed paste should be blocked in normal mode")
+  key.run({ event: keyEvent("i") })
+  editor.onPaste(pasteEvent)
+  assert(Boolean(stats.nativePastes), "bracketed paste should reach the editor in insert mode")
 }
 
 {
