@@ -277,6 +277,17 @@ export function createVimHandler(input: {
     visualWantedColumn = undefined
   }
 
+  function cancelPending() {
+    clearEscapePending()
+    pendingOperatorCount = 1
+    pendingOperatorFind = undefined
+    pendingOperatorDisplay = undefined
+    pendingTextObject = undefined
+    clearWantedColumn()
+    clearVisualWantedColumn()
+    input.state.clearPending()
+  }
+
   function repeatCount(count: number, run: () => void) {
     Array.from({ length: count }).forEach(() => run())
   }
@@ -2215,6 +2226,7 @@ export function createVimHandler(input: {
   }
 
   return {
+    cancelPending,
     handleKey(event: VimEvent) {
       if (!input.enabled()) return false
 

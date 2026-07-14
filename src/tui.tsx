@@ -331,6 +331,7 @@ const tui: TuiPlugin = async (api, rawOptions) => {
   api.lifecycle.onDispose(prompt.dispose)
 
   function toggle() {
+    prompt.cancelPending()
     const next = !enabled()
     api.kv.set(KV_ENABLED, next)
     setEnabled(next)

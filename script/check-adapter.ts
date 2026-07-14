@@ -271,6 +271,35 @@ async function setup(options: unknown = {}) {
 }
 
 {
+  const { layers, api } = await setup()
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const toggle = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.toggle")
+  const editor = fakeTextarea()
+  editor.plainText = "a\nb"
+  api.renderer.currentFocusedEditor = editor
+  const event = (name: string) => ({
+    name,
+    sequence: name,
+    raw: name,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+
+  key.run({ event: event("d") })
+  key.run({ event: event("g") })
+  toggle.run()
+  toggle.run()
+  key.run({ event: event("g") })
+  key.run({ event: event("j") })
+  assert(editor.plainText === "a\nb", "toggling Vim should clear handler-private pending operator state")
+}
+
+{
   const { layers, api, dispatched } = await setup()
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")

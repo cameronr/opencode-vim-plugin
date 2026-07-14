@@ -606,6 +606,7 @@ export function createPromptVim(
 
   return {
     dispose,
+    cancelPending: handler.cancelPending,
     applyCursorStyle,
     active: () => Boolean(promptEditor()),
     indicator,
