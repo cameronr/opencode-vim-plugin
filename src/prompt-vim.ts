@@ -13,8 +13,8 @@ const PROMPT_RENDER_PATCH = Symbol("ocv-plugin.prompt.render.patch")
 type PromptRenderPatch = {
   original: TextareaLike["render"]
   patched: TextareaLike["render"]
-  originalSubmit: TextareaLike["submit"]
-  patchedSubmit: TextareaLike["submit"]
+  originalClear: TextareaLike["clear"]
+  patchedClear: TextareaLike["clear"]
   originalPaste: TextareaLike["onPaste"]
   patchedPaste: NonNullable<TextareaLike["onPaste"]>
 }
@@ -334,7 +334,7 @@ export function createPromptVim(
 ) {
   let lastPromptEditor: TextareaLike | undefined
   let onPromptEditorChange = (_previous: TextareaLike | undefined) => {}
-  let onPromptSubmit = () => {}
+  let onPromptClear = () => {}
 
   function currentPromptEditor() {
     if (api.ui.dialog.open) return
@@ -373,11 +373,10 @@ export function createPromptVim(
       buffer.buffers.fg.set(selectedForeground(api, api.theme.current.text).buffer.subarray(0, 4), offset)
       buffer.buffers.bg.set(api.theme.current.text.buffer.subarray(0, 4), offset)
     }
-    const originalSubmit = editor.submit
-    const patchedSubmit: TextareaLike["submit"] = (...args) => {
-      const result = originalSubmit.apply(editor, args)
-      if (result !== false) onPromptSubmit()
-      return result
+    const originalClear = editor.clear
+    const patchedClear: TextareaLike["clear"] = (...args) => {
+      originalClear.apply(editor, args)
+      onPromptClear()
     }
     const originalPaste = editor.onPaste
     const patchedPaste: NonNullable<TextareaLike["onPaste"]> = (event) => {
@@ -388,9 +387,9 @@ export function createPromptVim(
       }
       return originalPaste?.call(editor, event)
     }
-    editor[PROMPT_RENDER_PATCH] = { original, patched, originalSubmit, patchedSubmit, originalPaste, patchedPaste }
+    editor[PROMPT_RENDER_PATCH] = { original, patched, originalClear, patchedClear, originalPaste, patchedPaste }
     editor.render = patched
-    editor.submit = patchedSubmit
+    editor.clear = patchedClear
     editor.onPaste = patchedPaste
     patchedEditors.add(editor)
   }
@@ -564,7 +563,7 @@ export function createPromptVim(
     state.resetHistory()
     if (mode === "visual" || mode === "visual-line" || mode === "replace") state.setMode("normal")
   }
-  onPromptSubmit = () => {
+  onPromptClear = () => {
     handler.cancelPending()
     state.resetHistory()
     state.setMode(input.insertAfterSubmit ? "insert" : "normal")
@@ -639,7 +638,7 @@ export function createPromptVim(
       const patch = editor[PROMPT_RENDER_PATCH]
       if (!patch) continue
       if (editor.render === patch.patched) editor.render = patch.original
-      if (editor.submit === patch.patchedSubmit) editor.submit = patch.originalSubmit
+      if (editor.clear === patch.patchedClear) editor.clear = patch.originalClear
       if (editor.onPaste === patch.patchedPaste) editor.onPaste = patch.originalPaste
       delete editor[PROMPT_RENDER_PATCH]
       if (!editor.isDestroyed) {

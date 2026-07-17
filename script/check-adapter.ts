@@ -50,6 +50,9 @@ function fakeTextarea() {
       this.plainText = text
       this.cursorOffset = text.length
     },
+    clear() {
+      this.setText("")
+    },
     submit() {},
     gotoBufferHome() {
       this.cursorOffset = 0
@@ -187,6 +190,7 @@ async function setup(options: unknown = {}) {
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const editor = fakeTextarea()
   const originalRender = editor.render
+  const originalClear = editor.clear
   const originalSubmit = editor.submit
   const originalPaste = editor.onPaste
   api.renderer.currentFocusedEditor = editor
@@ -287,7 +291,8 @@ async function setup(options: unknown = {}) {
   assert(disposers.length === 1, "prompt cleanup should be registered with plugin lifecycle")
   await disposers[0]?.()
   assert(editor.render === originalRender, "prompt cleanup should restore patched render")
-  assert(editor.submit === originalSubmit, "prompt cleanup should restore patched submit")
+  assert(editor.clear === originalClear, "prompt cleanup should restore patched clear")
+  assert(editor.submit === originalSubmit, "prompt patching should leave submit unchanged")
   assert(editor.onPaste === originalPaste, "prompt cleanup should restore patched paste")
   assert(editor.insertText === originalInsertText, "prompt cleanup should restore repeat recorder methods")
 }
@@ -393,7 +398,10 @@ async function setup(options: unknown = {}) {
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const editor: any = fakeTextarea()
   editor.plainText = "draft"
-  editor.submit = () => editor.setText("")
+  editor.submit = () => {
+    editor.clear()
+    return true
+  }
   api.renderer.currentFocusedEditor = editor
   const event = (name: string) => ({
     name,
@@ -418,7 +426,6 @@ async function setup(options: unknown = {}) {
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const editor: any = fakeTextarea()
-  editor.submit = () => editor.setText("")
   const originalInsertText = editor.insertText
   api.renderer.currentFocusedEditor = editor
   const event = (name: string) => ({
@@ -435,11 +442,43 @@ async function setup(options: unknown = {}) {
 
   key.run({ event: event("i") })
   editor.insertText("draft")
-  editor.submit()
-  assert(editor.insertText === originalInsertText, "external prompt submission should close the repeat recorder")
+  editor.clear()
+  assert(editor.insertText === originalInsertText, "external prompt clearing should close the repeat recorder")
   key.run({ event: event("escape") })
   key.run({ event: event("u") })
-  assert(editor.plainText === "", "external prompt submission should clear Vim undo history")
+  assert(editor.plainText === "", "external prompt clearing should clear Vim undo history")
+}
+
+{
+  const { layers, api } = await setup()
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const editor: any = fakeTextarea()
+  editor.plainText = "draft"
+  editor.submit = () => true
+  const originalInsertText = editor.insertText
+  api.renderer.currentFocusedEditor = editor
+  const event = (name: string) => ({
+    name,
+    sequence: name,
+    raw: name,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+
+  key.run({ event: event("x") })
+  editor.submit()
+  key.run({ event: event("u") })
+  assert(editor.plainText === "draft", "a rejected submission should preserve Vim undo history")
+
+  key.run({ event: event("i") })
+  editor.insertText("!")
+  editor.submit()
+  assert(editor.insertText !== originalInsertText, "a rejected submission should keep the repeat recorder active")
 }
 
 {
