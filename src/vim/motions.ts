@@ -1082,8 +1082,9 @@ export function pasteAfter(textarea: TextareaRenderable, reg: VimRegister) {
   if (reg.linewise) {
     const text = textarea.plainText
     const end = lineEnd(text, textarea.cursorOffset)
+    const value = reg.text.endsWith("\n") ? reg.text.slice(0, -1) : reg.text
     textarea.cursorOffset = end
-    textarea.insertText("\n" + reg.text)
+    textarea.insertText("\n" + value)
     textarea.cursorOffset = end + 1
     return
   }
@@ -1097,8 +1098,9 @@ export function pasteBefore(textarea: TextareaRenderable, reg: VimRegister) {
   if (reg.linewise) {
     const text = textarea.plainText
     const start = lineStart(text, textarea.cursorOffset)
+    const value = reg.text.endsWith("\n") ? reg.text.slice(0, -1) : reg.text
     textarea.cursorOffset = start
-    textarea.insertText(reg.text + "\n")
+    textarea.insertText(value + "\n")
     textarea.cursorOffset = start
     return
   }

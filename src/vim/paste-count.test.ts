@@ -3,7 +3,7 @@ import { TextareaRenderable } from "@opentui/core"
 import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
 import { createRoot } from "solid-js"
 import { createVimHandler, type VimEvent } from "./handler"
-import { createVimState } from "./state"
+import { createVimState, type VimRegister } from "./state"
 
 const renderers: TestRenderer[] = []
 const disposers: Array<() => void> = []
@@ -13,7 +13,7 @@ afterEach(() => {
   for (const renderer of renderers.splice(0)) renderer.destroy()
 })
 
-async function setup(text: string) {
+async function setup(text: string, register?: VimRegister) {
   const { renderer } = await createTestRenderer({ width: 80, height: 8 })
   renderers.push(renderer)
   const textarea = new TextareaRenderable(renderer, {
@@ -31,6 +31,7 @@ async function setup(text: string) {
       enabled: () => true,
       state,
       textarea: () => textarea,
+      ...(register ? { register: () => register } : {}),
       submit() {},
       scroll() {},
       jump() {},
@@ -78,5 +79,55 @@ describe("counted linewise paste", () => {
 
     expect(textarea.plainText).toBe("a\na\na\nb")
     expect(textarea.cursorOffset).toBe(2)
+  })
+
+  test("2p keeps repeated multiline registers contiguous", async () => {
+    const { textarea, press } = await setup("a\nb\nc")
+
+    press("2")
+    press("y")
+    press("y")
+    press("j")
+    press("j")
+    press("2")
+    press("p")
+
+    expect(textarea.plainText).toBe("a\nb\nc\na\nb\na\nb")
+    expect(textarea.cursorOffset).toBe(6)
+  })
+
+  test("2P keeps repeated multiline registers contiguous", async () => {
+    const { textarea, press } = await setup("a\nb\nc")
+
+    press("2")
+    press("y")
+    press("y")
+    press("j")
+    press("j")
+    press("2")
+    press("p", { shift: true, sequence: "P" })
+
+    expect(textarea.plainText).toBe("a\nb\na\nb\na\nb\nc")
+    expect(textarea.cursorOffset).toBe(4)
+  })
+
+  test("2p handles a trailing register newline in the middle of a buffer", async () => {
+    const { textarea, press } = await setup("c\nd", { text: "a\nb\n", linewise: true })
+
+    press("2")
+    press("p")
+
+    expect(textarea.plainText).toBe("c\na\nb\na\nb\nd")
+    expect(textarea.cursorOffset).toBe(2)
+  })
+
+  test("2P handles a trailing register newline in the middle of a buffer", async () => {
+    const { textarea, press } = await setup("c\nd", { text: "a\nb\n", linewise: true })
+
+    press("2")
+    press("p", { shift: true, sequence: "P" })
+
+    expect(textarea.plainText).toBe("a\nb\na\nb\nc\nd")
+    expect(textarea.cursorOffset).toBe(0)
   })
 })
