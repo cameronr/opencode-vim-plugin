@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@leohenon/opencode-vim-plugin",
   "version": "0.0.1",
-  "description": "Vim mode plugin for upstream OpenCode, powered by OCV.",
+  "description": "Vim mode plugin for OpenCode.",
   "keywords": [
     "opencode",
     "plugin",
