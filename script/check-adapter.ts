@@ -177,15 +177,16 @@ async function setup(options: unknown = {}) {
 
 {
   const { layers, api, dispatched, disposers } = await setup()
-  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.quit"))
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.toggle"))
   assert(commandLayer?.mode === undefined, "vim palette commands should remain reachable while autocomplete is open")
   const bindingLayer = layers.find((layer) => layer.priority === 100 && layer.bindings?.some((binding: any) => binding.cmd === "ocv-plugin.key"))
   assert(bindingLayer?.mode === "base", "vim key bindings should be inactive while autocomplete is open")
   const toggle = commandLayer?.commands.find((command: any) => command.name === "ocv-plugin.toggle")
   assert(toggle?.slashName === "vim", "toggle command should expose /vim")
-  const quit = commandLayer?.commands.find((command: any) => command.name === "ocv-plugin.quit")
-  assert(quit?.title === "Quit", "quit command title should be concise")
-  assert(quit?.category === "System", "quit command should be in the System category")
+  assert(
+    !layers.some((layer) => layer.commands?.some((command: any) => command.slashName === "q" || command.slashAliases?.includes("quit"))),
+    "the plugin should not shadow OpenCode's /q and /quit slash commands",
+  )
 
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const editor = fakeTextarea()

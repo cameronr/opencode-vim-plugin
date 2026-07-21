@@ -25,9 +25,7 @@ type TextareaLike = TextareaRenderable & {
 }
 
 const COMMAND_KEY = "ocv-plugin.key"
-const COMMAND_QUIT = "ocv-plugin.quit"
 const COMMAND_PALETTE = "command.palette.show"
-const COMMAND_EXIT = "app.exit"
 const YANK_FLASH_MS = 70
 const CLIPBOARD_TIMEOUT_MS = 1000
 
@@ -587,18 +585,6 @@ export function createPromptVim(
   })
 
   const commands = [
-    {
-      name: COMMAND_QUIT,
-      title: "Quit",
-      category: "System",
-      namespace: "palette",
-      slashName: "q",
-      slashAliases: ["quit"],
-      run() {
-        api.keymap.dispatchCommand(COMMAND_EXIT)
-        api.ui.dialog.clear()
-      },
-    },
     {
       name: COMMAND_KEY,
       title: "Vim key",
