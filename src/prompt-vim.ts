@@ -376,7 +376,11 @@ export function createPromptVim(
       const cursor = editor.visualCursor
       if (cursor.visualRow < 0 || cursor.visualRow >= editor.height) return
       if (cursor.visualCol < 0 || cursor.visualCol >= editor.width) return
-      const offset = ((editor.y + cursor.visualRow) * buffer.width + editor.x + cursor.visualCol) * 4
+      const row = editor.y + cursor.visualRow
+      const col = editor.x + cursor.visualCol
+      if (row < 0 || row >= buffer.height) return
+      if (col < 0 || col >= buffer.width) return
+      const offset = (row * buffer.width + col) * 4
       buffer.buffers.fg.set(selectedForeground(api, api.theme.current.text).buffer.subarray(0, 4), offset)
       buffer.buffers.bg.set(api.theme.current.text.buffer.subarray(0, 4), offset)
     }
