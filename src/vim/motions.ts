@@ -1090,7 +1090,7 @@ export function pasteAfter(textarea: TextareaRenderable, reg: VimRegister) {
   }
   textarea.cursorOffset = Math.min(textarea.cursorOffset + 1, textarea.plainText.length)
   textarea.insertText(reg.text)
-  textarea.cursorOffset = textarea.cursorOffset - 1
+  textarea.cursorOffset = Math.max(0, textarea.cursorOffset - 1)
 }
 
 export function pasteBefore(textarea: TextareaRenderable, reg: VimRegister) {
@@ -1105,7 +1105,7 @@ export function pasteBefore(textarea: TextareaRenderable, reg: VimRegister) {
     return
   }
   textarea.insertText(reg.text)
-  textarea.cursorOffset = textarea.cursorOffset - 1
+  textarea.cursorOffset = Math.max(0, textarea.cursorOffset - 1)
 }
 
 export function pasteOverSelection(textarea: TextareaRenderable, reg: VimRegister): VimRegister {
@@ -1119,7 +1119,7 @@ export function pasteOverSelection(textarea: TextareaRenderable, reg: VimRegiste
   clearSelection(textarea)
   deleteOffsets(textarea, start, end)
   textarea.insertText(reg.text)
-  textarea.cursorOffset = textarea.cursorOffset - 1
+  textarea.cursorOffset = Math.max(0, textarea.cursorOffset - 1)
   return { text, linewise: false }
 }
 
@@ -1138,7 +1138,7 @@ export function pasteOverVisualSelection(
     clearSelection(textarea)
     deleteOffsets(textarea, sel.start, sel.end)
     textarea.insertText(reg.text)
-    textarea.cursorOffset = textarea.cursorOffset - 1
+    textarea.cursorOffset = Math.max(0, textarea.cursorOffset - 1)
     return { text, linewise: false }
   }
 
