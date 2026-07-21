@@ -574,6 +574,38 @@ async function setup(options: unknown = {}) {
 }
 
 {
+  const { layers, api, disposers } = await setup()
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const first: any = fakeTextarea()
+  const firstRender = first.render
+  const second: any = fakeTextarea()
+  const secondRender = second.render
+  const event = (name: string) => ({
+    name,
+    sequence: name,
+    raw: name,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+
+  api.renderer.currentFocusedEditor = first
+  key.run({ event: event("x") })
+  assert(first.render !== firstRender, "first prompt editor should be patched")
+  first.isDestroyed = true
+  api.renderer.currentFocusedEditor = second
+  key.run({ event: event("x") })
+  assert(second.render !== secondRender, "second prompt editor should be patched")
+  await disposers[0]?.()
+  assert(first.render !== firstRender, "destroyed prompt editors should be pruned before cleanup")
+  assert(second.render === secondRender, "live prompt editors should still be restored on cleanup")
+}
+
+{
   const { layers, api } = await setup()
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")

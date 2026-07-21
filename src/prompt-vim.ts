@@ -358,8 +358,15 @@ export function createPromptVim(
 
   const patchedEditors = new Set<TextareaLike>()
 
+  function prunePatchedEditors() {
+    for (const patched of patchedEditors) {
+      if (patched.isDestroyed) patchedEditors.delete(patched)
+    }
+  }
+
   function patchPromptEditor(editor: TextareaLike) {
     if (editor[PROMPT_RENDER_PATCH]) return
+    prunePatchedEditors()
     const original = editor.render
     const patched: TextareaLike["render"] = (buffer, deltaTime) => {
       original.call(editor, buffer, deltaTime)
