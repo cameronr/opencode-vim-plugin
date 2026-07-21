@@ -648,4 +648,51 @@ async function setup(options: unknown = {}) {
   assert(replaceSecond.plainText === "new", "switching editors should leave replace mode before handling the next key")
 }
 
+{
+  const plugin = ((await import("../dist/tui.js" as string)) as any).default
+  const layers: any[] = []
+  const toasts: any[] = []
+  const api: any = {
+    app: { version: "test" },
+    kv: { get: (_key: string, fallback: unknown) => fallback, set() {} },
+    mode: { current: () => "base", push: () => () => {} },
+    keymap: {
+      registerLayer(layer: any) {
+        if (layer.bindings?.some((binding: any) => binding.cmd === "ocv-plugin.toggle")) {
+          throw new Error('Invalid key "ctrl+": missing key name')
+        }
+        if (layer.priority === 200) throw new Error('Invalid key "<broken": unterminated token')
+        layers.push(layer)
+        return () => {}
+      },
+      registerToken() {
+        throw new Error('Invalid key "": sequence cannot be empty')
+      },
+      dispatchCommand() {
+        return { ok: true }
+      },
+    },
+    slots: { register() {} },
+    lifecycle: { signal: new AbortController().signal, onDispose: () => () => {} },
+    ui: { toast: (toast: any) => toasts.push(toast), dialog: { open: false, clear() {} } },
+    route: { current: { name: "home" } },
+    renderer: { currentFocusedEditor: null, requestRender() {} },
+    theme: { current: { textMuted: {}, text: {}, secondary: {}, background: { a: 1 } } },
+  }
+  await plugin.tui(api, { toggle_key: "ctrl+", normal_leader: "space", normal_keybinds: { "<broken": "session.list" } }, {})
+  assert(
+    layers.some((layer) => layer.bindings?.some((binding: any) => binding.cmd === "ocv-plugin.key")),
+    "invalid user keybind config should not prevent core vim bindings from registering",
+  )
+  assert(
+    layers.some((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.toggle")),
+    "invalid user keybind config should not prevent command registration",
+  )
+  assert(toasts.filter((toast) => toast.variant === "error").length === 3, "each invalid user keybind option should surface an error toast")
+  assert(
+    toasts.some((toast) => String(toast.message).includes("toggle_key")),
+    "the toggle_key error toast should name the option",
+  )
+}
+
 console.log("ok: adapter behavior checks passed")

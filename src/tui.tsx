@@ -342,8 +342,22 @@ const tui: TuiPlugin = async (api, rawOptions) => {
     })
   }
 
+  // User-provided keybind config should degrade to a toast instead of failing the plugin load.
+  function registerUserKeybinds(option: string, register: () => void) {
+    try {
+      register()
+    } catch (error) {
+      api.ui.toast({
+        variant: "error",
+        message: `Vim plugin: invalid ${option}: ${error instanceof Error ? error.message : String(error)}`,
+      })
+    }
+  }
+
   if (options.normalLeader && options.normalBindings.length > 0) {
-    api.keymap.registerToken({ name: NORMAL_LEADER_TOKEN, key: options.normalLeader })
+    registerUserKeybinds("normal_leader", () => {
+      api.keymap.registerToken({ name: NORMAL_LEADER_TOKEN, key: options.normalLeader! })
+    })
   }
 
   api.keymap.registerLayer({
@@ -366,18 +380,27 @@ const tui: TuiPlugin = async (api, rawOptions) => {
   api.keymap.registerLayer({
     mode: "base",
     priority: 100,
-    bindings: [
-      ...(options.toggleKey ? [{ key: options.toggleKey, cmd: COMMAND_TOGGLE, desc: "Toggle vim mode" }] : []),
-      ...prompt.bindings,
-    ],
+    bindings: prompt.bindings,
   })
 
+  if (options.toggleKey) {
+    registerUserKeybinds("toggle_key", () => {
+      api.keymap.registerLayer({
+        mode: "base",
+        priority: 100,
+        bindings: [{ key: options.toggleKey!, cmd: COMMAND_TOGGLE, desc: "Toggle vim mode" }],
+      })
+    })
+  }
+
   if (options.normalBindings.length > 0) {
-    api.keymap.registerLayer({
-      mode: "base",
-      priority: 200,
-      enabled: () => prompt.active() && prompt.mode() === "normal",
-      bindings: options.normalBindings,
+    registerUserKeybinds("normal_keybinds", () => {
+      api.keymap.registerLayer({
+        mode: "base",
+        priority: 200,
+        enabled: () => prompt.active() && prompt.mode() === "normal",
+        bindings: options.normalBindings,
+      })
     })
   }
 
