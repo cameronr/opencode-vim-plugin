@@ -1107,14 +1107,14 @@ export function createVimHandler(input: {
     }
 
     if (key === "escape") {
-      if (!input.state.pending() && input.state.count()) {
-        input.state.clearCount()
-        event.preventDefault()
-        return true
-      }
       if (input.state.isVisual()) {
         clearSelection(input.textarea())
         input.state.setMode("normal")
+        event.preventDefault()
+        return true
+      }
+      if (!input.state.pending() && input.state.count()) {
+        input.state.clearCount()
         event.preventDefault()
         return true
       }

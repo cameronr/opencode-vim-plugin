@@ -107,4 +107,15 @@ describe("visual mode counts", () => {
       end: text.indexOf("three") + 1,
     })
   })
+
+  test("escape exits visual mode with a pending count", async () => {
+    const { state, press } = await setup("one\ntwo\nthree")
+
+    press("v")
+    press("2")
+    press("escape")
+
+    expect(state.mode()).toBe("normal")
+    expect(state.count()).toBe("")
+  })
 })
