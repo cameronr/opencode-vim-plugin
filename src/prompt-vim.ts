@@ -99,7 +99,7 @@ function clipboardRead() {
       ? ["pbpaste"]
       : process.platform === "win32"
         ? ["powershell.exe", "-NoProfile", "-Command", "Get-Clipboard -Raw"]
-        : ["sh", "-lc", "wl-paste -n 2>/dev/null || xclip -selection clipboard -out 2>/dev/null || xsel --clipboard --output 2>/dev/null"]
+        : ["sh", "-c", "wl-paste -n 2>/dev/null || xclip -selection clipboard -out 2>/dev/null || xsel --clipboard --output 2>/dev/null"]
   const result = spawnSync(command[0]!, command.slice(1), {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
@@ -116,7 +116,7 @@ function clipboardWrite(text: string) {
       ? ["pbcopy"]
       : process.platform === "win32"
         ? ["powershell.exe", "-NoProfile", "-Command", "[Console]::In.ReadToEnd() | Set-Clipboard"]
-        : ["sh", "-lc", "wl-copy 2>/dev/null || xclip -selection clipboard -in 2>/dev/null || xsel --clipboard --input 2>/dev/null"]
+        : ["sh", "-c", "wl-copy 2>/dev/null || xclip -selection clipboard -in 2>/dev/null || xsel --clipboard --input 2>/dev/null"]
   const result = spawnSync(command[0]!, command.slice(1), {
     input: text,
     encoding: "utf8",
