@@ -53,7 +53,7 @@ Toggle via command palette > `Toggle vim mode` or slash command `/vim`.
 | Matching / paragraph yanks     | `y%`, `y}`, `y{`                                                                                        |
 | Put / undo / repeat            | `p`, `P`, `u`, `Ctrl+r`, `.`                                                                            |
 | Visual selection               | `v`, `V`                                                                                                |
-| Commands                       | `:` (opens the command palette; quit via OpenCode's `/exit`, `/quit`, `/q`)                             |
+| Commands                       | `:` `:q`                                                                                                |
 
 Numeric count prefixes are supported for motions and common operators.
 
@@ -101,6 +101,9 @@ Configure the plugin in `tui.json`:
 | `vim_normal_leader`             | Alias for `normal_leader`                     |
 | `normal_keybinds`               | Extra keybinds active only in Vim normal mode |
 | `keybinds["vim.normal"]`        | Nested normal-mode keybind configuration      |
+
+> [!NOTE]
+> Unsupported ocv options: `vim_line_motions`, `vim_escape_sequence`.
 
 ### Mode-scoped keybinds
 
