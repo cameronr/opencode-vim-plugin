@@ -183,9 +183,10 @@ async function setup(options: unknown = {}) {
   assert(bindingLayer?.mode === "base", "vim key bindings should be inactive while autocomplete is open")
   const toggle = commandLayer?.commands.find((command: any) => command.name === "ocv-plugin.toggle")
   assert(toggle?.slashName === "vim", "toggle command should expose /vim")
-  const quit = commandLayer?.commands.find((command: any) => command.name === "vim.q")
+  const quit = commandLayer?.commands.find((command: any) => command.name === "ocv-plugin.quit")
   assert(quit?.title === "Quit" && quit.category === "System", "the command palette should expose the OCV-style Quit command")
-  assert(quit?.slashName === "q" && quit.slashAliases === undefined, "the Quit command should match OCV's /q metadata")
+  assert(quit?.slashName === undefined && quit.slashAliases === undefined, "the plugin should leave OpenCode's /q slash alias unchanged")
+  assert(quit?.namespace === "palette", "the plugin Quit command should be reachable from OpenCode's command palette")
 
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const editor: any = fakeTextarea()

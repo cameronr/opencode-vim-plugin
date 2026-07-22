@@ -29,7 +29,7 @@ type TextareaLike = TextareaRenderable & {
 }
 
 const COMMAND_KEY = "ocv-plugin.key"
-const COMMAND_QUIT = "vim.q"
+const COMMAND_QUIT = "ocv-plugin.quit"
 const COMMAND_PALETTE = "command.palette.show"
 const COMMAND_EXIT = "app.exit"
 const YANK_FLASH_MS = 70
@@ -644,7 +644,7 @@ export function createPromptVim(
     {
       name: COMMAND_QUIT,
       title: "Quit",
-      slashName: "q",
+      namespace: "palette",
       run: () => api.keymap.dispatchCommand(COMMAND_EXIT),
       category: "System",
     },
