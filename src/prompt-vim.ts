@@ -29,7 +29,9 @@ type TextareaLike = TextareaRenderable & {
 }
 
 const COMMAND_KEY = "ocv-plugin.key"
+const COMMAND_QUIT = "vim.q"
 const COMMAND_PALETTE = "command.palette.show"
+const COMMAND_EXIT = "app.exit"
 const YANK_FLASH_MS = 70
 // Clipboard tools answer in single-digit milliseconds when they work; a short
 // timeout only caps the stall when they don't (spawnSync blocks the render loop).
@@ -639,6 +641,13 @@ export function createPromptVim(
   })
 
   const commands = [
+    {
+      name: COMMAND_QUIT,
+      title: "Quit",
+      slashName: "q",
+      run: () => api.keymap.dispatchCommand(COMMAND_EXIT),
+      category: "System",
+    },
     {
       name: COMMAND_KEY,
       title: "Vim key",
