@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process"
 import type { KeyEvent, Renderable, TuiPluginApi } from "@opencode-ai/plugin/tui"
-import type { Binding, CommandContext } from "@opentui/keymap"
+import type { Binding, CommandContext, KeyLike } from "@opentui/keymap"
 import { RGBA, type TextareaRenderable } from "@opentui/core"
 import { createVimHandler } from "./vim/handler"
 import { useVimIndicator } from "./vim/indicator"
@@ -132,7 +132,11 @@ function clipboardWrite(text: string): "ok" | "missing" | "failed" {
   return result.status === 0 ? "ok" : "failed"
 }
 
-const normalKeys = [
+// OpenCode expands commas in string bindings as separators, so literal comma keys must use object form.
+const commaKey = { name: "," } as const satisfies KeyLike
+const shiftedCommaKey = { name: ",", shift: true } as const satisfies KeyLike
+
+const normalKeys: KeyLike[] = [
   "escape",
   "return",
   "space",
@@ -178,7 +182,7 @@ const normalKeys = [
   "t",
   "shift+t",
   ";",
-  ",",
+  commaKey,
   "i",
   "shift+i",
   "a",
@@ -221,7 +225,7 @@ const normalKeys = [
   "]",
   "shift+[",
   "shift+]",
-  "shift+,",
+  shiftedCommaKey,
   "shift+.",
   "%",
   "<",
@@ -237,7 +241,7 @@ const normalKeys = [
   "ctrl+v",
 ]
 
-const insertPrintableKeys = [
+const insertPrintableKeys: KeyLike[] = [
   ..."abcdefghijklmnopqrstuvwxyz".split(""),
   ..."0123456789".split(""),
   "space",
@@ -248,7 +252,7 @@ const insertPrintableKeys = [
   "\\",
   ";",
   "'",
-  ",",
+  commaKey,
   ".",
   "slash",
   "`",
@@ -313,7 +317,7 @@ const insertPrintableKeys = [
   "<",
   ">",
   "?",
-  "shift+,",
+  shiftedCommaKey,
   "shift+.",
   "shift+slash",
   "shift+;",
