@@ -189,7 +189,13 @@ async function setup(options: unknown = {}) {
   )
 
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
-  const editor = fakeTextarea()
+  const editor: any = fakeTextarea()
+  const defaultCursorStyle = { style: "block", blinking: false }
+  const defaultSelectionBg = { name: "default-selection-bg" }
+  const defaultSelectionFg = { name: "default-selection-fg" }
+  editor.cursorStyle = defaultCursorStyle
+  editor.selectionBg = defaultSelectionBg
+  editor.selectionFg = defaultSelectionFg
   const originalRender = editor.render
   const originalClear = editor.clear
   const originalSubmit = editor.submit
@@ -289,6 +295,12 @@ async function setup(options: unknown = {}) {
   const originalInsertText = editor.insertText
   key.run({ event: normalEvent("i") })
   assert(editor.insertText !== originalInsertText, "insert mode should install the repeat recorder")
+  assert(editor.cursorStyle?.style === "line", "enabled insert mode should use the Vim cursor style")
+  toggle.run()
+  assert(editor.showCursor === true, "disabling Vim should restore the prompt cursor visibility")
+  assert(editor.cursorStyle === defaultCursorStyle, "disabling Vim should restore the prompt cursor style")
+  assert(editor.selectionBg === defaultSelectionBg, "disabling Vim should restore the prompt selection background")
+  assert(editor.selectionFg === defaultSelectionFg, "disabling Vim should restore the prompt selection foreground")
   assert(disposers.length === 1, "prompt cleanup should be registered with plugin lifecycle")
   await disposers[0]?.()
   assert(editor.render === originalRender, "prompt cleanup should restore patched render")

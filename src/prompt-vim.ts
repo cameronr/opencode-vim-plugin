@@ -17,6 +17,10 @@ type PromptRenderPatch = {
   patchedClear: TextareaLike["clear"]
   originalPaste: TextareaLike["onPaste"]
   patchedPaste: NonNullable<TextareaLike["onPaste"]>
+  originalShowCursor: TextareaLike["showCursor"]
+  originalCursorStyle: TextareaLike["cursorStyle"]
+  originalSelectionBg: TextareaLike["selectionBg"]
+  originalSelectionFg: TextareaLike["selectionFg"]
 }
 
 type TextareaLike = TextareaRenderable & {
@@ -365,6 +369,15 @@ export function createPromptVim(
     }
   }
 
+  function restorePromptAppearance(editor: TextareaLike, patch: PromptRenderPatch) {
+    editor.showCursor = patch.originalShowCursor
+    editor.cursorStyle = patch.originalCursorStyle
+    editor.selectionBg = patch.originalSelectionBg
+    editor.selectionFg = patch.originalSelectionFg
+    editor.getLayoutNode().markDirty()
+    editor.requestRender()
+  }
+
   function patchPromptEditor(editor: TextareaLike) {
     if (editor[PROMPT_RENDER_PATCH]) return
     prunePatchedEditors()
@@ -399,7 +412,18 @@ export function createPromptVim(
       }
       return originalPaste?.call(editor, event)
     }
-    editor[PROMPT_RENDER_PATCH] = { original, patched, originalClear, patchedClear, originalPaste, patchedPaste }
+    editor[PROMPT_RENDER_PATCH] = {
+      original,
+      patched,
+      originalClear,
+      patchedClear,
+      originalPaste,
+      patchedPaste,
+      originalShowCursor: editor.showCursor,
+      originalCursorStyle: editor.cursorStyle,
+      originalSelectionBg: editor.selectionBg,
+      originalSelectionFg: editor.selectionFg,
+    }
     editor.render = patched
     editor.clear = patchedClear
     editor.onPaste = patchedPaste
@@ -410,14 +434,14 @@ export function createPromptVim(
     const editor = currentPromptEditor()
     if (!editor) return
     patchPromptEditor(editor)
+    const patch = editor[PROMPT_RENDER_PATCH]!
+    if (!input.enabled()) {
+      restorePromptAppearance(editor, patch)
+      return
+    }
     const visual = state.isVisual()
     editor.selectionBg = visual ? api.theme.current.secondary : undefined
     editor.selectionFg = visual ? selectedForeground(api, api.theme.current.secondary) : undefined
-    if (!input.enabled()) {
-      editor.showCursor = true
-      editor.cursorStyle = { style: "line", blinking: true }
-      return
-    }
     if (state.isInsert()) {
       editor.showCursor = true
       editor.cursorStyle = { style: "line", blinking: true }
@@ -669,11 +693,7 @@ export function createPromptVim(
           const selection = editor.editorView.getSelection()
           if (selection?.start === flashSpan.start && selection.end === flashSpan.end) editor.clearSelection()
         }
-        editor.selectionBg = undefined
-        editor.selectionFg = undefined
-        editor.showCursor = true
-        editor.cursorStyle = { style: "line", blinking: true }
-        editor.getLayoutNode().markDirty()
+        restorePromptAppearance(editor, patch)
       }
     }
     patchedEditors.clear()

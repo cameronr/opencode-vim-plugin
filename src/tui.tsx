@@ -336,6 +336,7 @@ const tui: TuiPlugin = async (api, rawOptions) => {
     api.kv.set(KV_ENABLED, next)
     setEnabled(next)
     if (next) prompt.setMode("normal")
+    prompt.applyCursorStyle()
     api.ui.toast({
       variant: next ? "success" : "info",
       message: next ? "Vim mode enabled" : "Vim mode disabled",
