@@ -27,7 +27,9 @@ type TextareaLike = TextareaRenderable & {
 const COMMAND_KEY = "ocv-plugin.key"
 const COMMAND_PALETTE = "command.palette.show"
 const YANK_FLASH_MS = 70
-const CLIPBOARD_TIMEOUT_MS = 1000
+// Clipboard tools answer in single-digit milliseconds when they work; a short
+// timeout only caps the stall when they don't (spawnSync blocks the render loop).
+const CLIPBOARD_TIMEOUT_MS = 300
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -108,7 +110,7 @@ function clipboardRead() {
   return result.stdout
 }
 
-function clipboardWrite(text: string) {
+function clipboardWrite(text: string): "ok" | "missing" | "failed" {
   const command =
     process.platform === "darwin"
       ? ["pbcopy"]
@@ -122,7 +124,8 @@ function clipboardWrite(text: string) {
     timeout: CLIPBOARD_TIMEOUT_MS,
     windowsHide: true,
   })
-  return result.status === 0 && !result.error
+  if (result.error) return (result.error as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : "failed"
+  return result.status === 0 ? "ok" : "failed"
 }
 
 const normalKeys = [
@@ -442,12 +445,29 @@ export function createPromptVim(
   })
   let clipboardRegister: VimRegister = null
   let clipboardText: string | undefined
+  let clipboardUnavailable = false
+  let clipboardFailures = 0
+
+  // Fail fast: stop shelling out once the clipboard tool is known to be dead so
+  // every yank/delete/paste doesn't block on it (spawnSync stalls the render
+  // loop). A missing binary latches immediately; ambiguous failures (timeout,
+  // nonzero exit) only latch after a few in a row, so a slow-but-working tool
+  // (PowerShell cold start, X11 over SSH) isn't disabled by one hiccup.
+  // Reads are not latched because an empty Wayland clipboard also exits non-zero.
+  const CLIPBOARD_MAX_FAILURES = 3
+
+  function clipboardFailed(kind: "missing" | "failed") {
+    clipboardFailures = kind === "missing" ? CLIPBOARD_MAX_FAILURES : clipboardFailures + 1
+    if (clipboardFailures < CLIPBOARD_MAX_FAILURES || clipboardUnavailable) return
+    clipboardUnavailable = true
+    api.ui.toast({ variant: "warning", message: "System clipboard unavailable, using the internal Vim register" })
+  }
   let flash = 0
   let flashSpan: { start: number; end: number } | undefined
   let flashTimer: ReturnType<typeof setTimeout> | undefined
 
   function register() {
-    if (!input.systemClipboardRegister) return state.register()
+    if (!input.systemClipboardRegister || clipboardUnavailable) return state.register()
     const text = clipboardRead()
     if (text === undefined) return clipboardRegister ?? state.register()
     if (clipboardRegister && text === clipboardText) return clipboardRegister
@@ -456,11 +476,16 @@ export function createPromptVim(
 
   function setRegister(next: VimRegister, notify = false) {
     state.setRegister(next)
-    if (!input.systemClipboardRegister || !next) return
+    if (!input.systemClipboardRegister || !next || clipboardUnavailable) return
     clipboardRegister = next
     clipboardText = next.text
     const copied = clipboardWrite(next.text)
-    if (notify && copied) api.ui.toast({ message: "Copied to clipboard", variant: "info" })
+    if (copied !== "ok") {
+      clipboardFailed(copied)
+      return
+    }
+    clipboardFailures = 0
+    if (notify) api.ui.toast({ message: "Copied to clipboard", variant: "info" })
   }
 
   function submitPrompt() {
