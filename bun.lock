@@ -4,15 +4,13 @@
   "workspaces": {
     "": {
       "name": "@leohenon/opencode-vim-plugin",
-      "dependencies": {
+      "devDependencies": {
+        "@opencode-ai/plugin": "^1.17.10",
         "@opentui/core": "^0.4.2",
         "@opentui/keymap": "^0.4.2",
         "@opentui/solid": "^0.4.2",
-        "solid-js": "1.9.12",
-      },
-      "devDependencies": {
-        "@opencode-ai/plugin": "^1.17.10",
         "@types/bun": "latest",
+        "solid-js": "1.9.12",
         "typescript": "^5.9.0",
       },
       "peerDependencies": {
@@ -21,6 +19,12 @@
         "@opentui/keymap": ">=0.4.2",
         "@opentui/solid": ">=0.4.2",
       },
+      "optionalPeers": [
+        "@opencode-ai/plugin",
+        "@opentui/core",
+        "@opentui/keymap",
+        "@opentui/solid",
+      ],
     },
   },
   "packages": {
