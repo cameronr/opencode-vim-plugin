@@ -559,7 +559,8 @@ export function createPromptVim(
       if (action === "top") api.keymap.dispatchCommand("session.first")
       if (action === "bottom") api.keymap.dispatchCommand("session.last")
     },
-    navigate: () => {},
+    // Returning false makes "/" and "?" fall through to autocomplete/insert
+    // instead of the copy-mode search path (see handler.ts dispatch).
     copySearchStart: () => false,
     autocomplete: () => false,
     langmap: input.langmap,

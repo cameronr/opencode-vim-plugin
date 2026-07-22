@@ -150,6 +150,11 @@ export function createVimHandler(input: {
   scroll: (action: VimScroll) => void
   jump: (action: VimJump) => void
   navigate?: (action: VimWindowNavigation) => void
+  // NOTE: This vim core is shared between the opencode-vim fork
+  // (https://github.com/leohenon/opencode-vim) and the opencode-vim-plugin
+  // (https://github.com/leohenon/opencode-vim-plugin).
+  // The copy* callbacks below and the "copy" mode dispatch path are not wired up the plugin.
+  // Do not remove — keeping the files identical makes porting changes trivial.
   copy?: (action: VimCopyMove) => void
   copyVisual?: (mode: "char" | "line" | "block") => void
   copyExitVisual?: () => void

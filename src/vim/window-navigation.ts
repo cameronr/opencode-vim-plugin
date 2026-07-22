@@ -1,3 +1,5 @@
+// NOTE: This module is shared between the opencode-vim fork and the opencode-vim-plugin repo.
+// Keep the two copies in sync — see note in the vim/handler.ts.
 import type { VimEvent } from "./handler"
 import type { createVimState } from "./state"
 
