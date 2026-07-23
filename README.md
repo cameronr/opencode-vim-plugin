@@ -87,6 +87,8 @@ Configure the plugin in `tui.json`:
 | Option                          | Purpose                                       |
 | ------------------------------- | --------------------------------------------- |
 | `enabled`                       | Start with Vim mode enabled                   |
+| `initial_mode`                  | Start in `normal` (default) or `insert` mode  |
+| `vim_initial_mode`              | Alias for `initial_mode`                      |
 | `toggle_key`                    | Keybind for `Toggle vim mode`                 |
 | `indicator`                     | Show the prompt Vim indicator                 |
 | `enter_submit`                  | Submit with Enter from insert mode            |
@@ -104,6 +106,24 @@ Configure the plugin in `tui.json`:
 
 > [!NOTE]
 > Unsupported ocv options: `vim_line_motions`, `vim_escape_sequence`.
+
+### Initial mode
+
+Vim mode starts in normal mode by default. To start with Vim mode enabled and the prompt ready for typing, use:
+
+```json
+{
+  "plugin": [
+    [
+      "@leohenon/opencode-vim-plugin",
+      {
+        "enabled": true,
+        "vim_initial_mode": "insert"
+      }
+    ]
+  ]
+}
+```
 
 ### Mode-scoped keybinds
 
