@@ -176,6 +176,18 @@ async function setup(options: unknown = {}) {
 }
 
 {
+  const { layers, api } = await setup({
+    enabled: true,
+    vim_initial_mode: "insert",
+    normal_keybinds: { q: "session.list" },
+  })
+  const normalLayer = layers.find((layer) => layer.priority === 200)
+  assert(normalLayer, "normal-mode keybind layer was not registered")
+  api.renderer.currentFocusedEditor = fakeTextarea()
+  assert(normalLayer.enabled() === false, "vim_initial_mode insert should start Vim in insert mode")
+}
+
+{
   const { layers, api, dispatched, disposers } = await setup()
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.toggle"))
   assert(commandLayer?.mode === undefined, "vim palette commands should remain reachable while autocomplete is open")

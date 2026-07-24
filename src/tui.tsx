@@ -12,9 +12,11 @@ const KV_ENABLED = "ocv-plugin.enabled"
 const NORMAL_LEADER_TOKEN = "ocv-plugin-leader"
 
 type NormalBinding = Binding<Renderable, KeyEvent> & { cmd: string }
+type InitialMode = "normal" | "insert"
 
 type Options = {
   enabled: boolean
+  initialMode?: InitialMode
   toggleKey?: string
   indicator: boolean
   enterSubmit: boolean
@@ -31,6 +33,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function nonEmptyString(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined
+}
+
+function readInitialMode(value: unknown): InitialMode | undefined {
+  return value === "normal" || value === "insert" ? value : undefined
 }
 
 // Mirrors OpenCode TUI's CommandMap for OCV-style keybind compatibility.
@@ -257,6 +263,7 @@ function readNormalBindings(options: Record<string, unknown>, normalLeader: stri
 function readOptions(input: unknown): Options {
   const options = isRecord(input) ? input : {}
   const enabled = typeof options.enabled === "boolean" ? options.enabled : true
+  const initialMode = readInitialMode(options.initial_mode) ?? readInitialMode(options.vim_initial_mode)
   const toggleKey = nonEmptyString(options.toggle_key)
   const indicator = options.indicator === false || options.indicator === "off" ? false : true
   const enterSubmit = options.enter_submit === true || options.vim_enter_submit === true
@@ -275,6 +282,7 @@ function readOptions(input: unknown): Options {
   const normalLeader = nonEmptyString(options.normal_leader) ?? nonEmptyString(options.vim_normal_leader) ?? nonEmptyString(keybinds?.leader)
   return {
     enabled,
+    initialMode,
     toggleKey,
     indicator,
     enterSubmit,
@@ -322,7 +330,7 @@ const tui: TuiPlugin = async (api, rawOptions) => {
   const [enabled, setEnabled] = createSignal(initialEnabled)
   const prompt = createPromptVim(api, {
     enabled,
-    initialMode: initialEnabled ? "normal" : "insert",
+    initialMode: initialEnabled ? (options.initialMode ?? "normal") : "insert",
     enterSubmit: options.enterSubmit,
     insertAfterSubmit: options.insertAfterSubmit,
     systemClipboardRegister: options.systemClipboardRegister,
