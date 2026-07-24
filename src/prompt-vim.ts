@@ -627,11 +627,13 @@ export function createPromptVim(
     handler.cancelPending()
     state.resetHistory()
     if (mode === "visual" || mode === "visual-line" || mode === "replace") state.setMode("normal")
+    else if (input.enabled() && mode === "insert") handler.beginInsertEdit()
   }
   onPromptClear = () => {
     handler.cancelPending()
     state.resetHistory()
     state.setMode(input.insertAfterSubmit ? "insert" : "normal")
+    if (input.enabled() && input.insertAfterSubmit) handler.beginInsertEdit()
   }
 
   const indicator = useVimIndicator({
