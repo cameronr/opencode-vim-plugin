@@ -181,10 +181,32 @@ async function setup(options: unknown = { initial_mode: "normal" }) {
     enabled: true,
     normal_keybinds: { q: "session.list" },
   })
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const normalLayer = layers.find((layer) => layer.priority === 200)
   assert(normalLayer, "normal-mode keybind layer was not registered")
-  api.renderer.currentFocusedEditor = fakeTextarea()
+  const editor: any = fakeTextarea()
+  const originalInsertText = editor.insertText
+  api.renderer.currentFocusedEditor = editor
   assert(normalLayer.enabled() === false, "Vim should start in insert mode by default")
+  assert(editor.insertText !== originalInsertText, "initial insert mode should start the repeat recorder")
+  const event = (name: string) => ({
+    name,
+    sequence: name,
+    raw: name,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+  editor.insertText("abc")
+  key.run({ event: event("escape") })
+  key.run({ event: event("u") })
+  assert(editor.plainText === "", "initial insert text should be undoable")
+  key.run({ event: event(".") })
+  assert(editor.plainText === "abc", "initial insert text should be repeatable")
 }
 
 {
@@ -480,10 +502,13 @@ async function setup(options: unknown = { initial_mode: "normal" }) {
   key.run({ event: event("i") })
   editor.insertText("draft")
   editor.clear()
-  assert(editor.insertText === originalInsertText, "external prompt clearing should close the repeat recorder")
+  assert(editor.insertText !== originalInsertText, "insert_after_submit should restart the repeat recorder")
+  editor.insertText("abc")
   key.run({ event: event("escape") })
   key.run({ event: event("u") })
-  assert(editor.plainText === "", "external prompt clearing should clear Vim undo history")
+  assert(editor.plainText === "", "insert_after_submit text should be undoable without restoring prior prompt history")
+  key.run({ event: event(".") })
+  assert(editor.plainText === "abc", "insert_after_submit text should be repeatable")
 }
 
 {
