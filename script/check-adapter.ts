@@ -84,7 +84,7 @@ function fakeTextarea() {
   }
 }
 
-async function setup(options: unknown = {}) {
+async function setup(options: unknown = { initial_mode: "normal" }) {
   const plugin = ((await import("../dist/tui.js" as string)) as any).default
   const layers: any[] = []
   const tokens: any[] = []
@@ -130,6 +130,7 @@ async function setup(options: unknown = {}) {
 
 {
   const { layers, tokens, api } = await setup({
+    initial_mode: "normal",
     normal_leader: "space",
     normal_keybinds: {
       "<leader>s": "session.list",
@@ -178,13 +179,24 @@ async function setup(options: unknown = {}) {
 {
   const { layers, api } = await setup({
     enabled: true,
-    vim_initial_mode: "insert",
     normal_keybinds: { q: "session.list" },
   })
   const normalLayer = layers.find((layer) => layer.priority === 200)
   assert(normalLayer, "normal-mode keybind layer was not registered")
   api.renderer.currentFocusedEditor = fakeTextarea()
-  assert(normalLayer.enabled() === false, "vim_initial_mode insert should start Vim in insert mode")
+  assert(normalLayer.enabled() === false, "Vim should start in insert mode by default")
+}
+
+{
+  const { layers, api } = await setup({
+    enabled: true,
+    vim_initial_mode: "normal",
+    normal_keybinds: { q: "session.list" },
+  })
+  const normalLayer = layers.find((layer) => layer.priority === 200)
+  assert(normalLayer, "normal-mode keybind layer was not registered")
+  api.renderer.currentFocusedEditor = fakeTextarea()
+  assert(normalLayer.enabled() === true, "vim_initial_mode normal should start Vim in normal mode")
 }
 
 {
@@ -447,7 +459,7 @@ async function setup(options: unknown = {}) {
 }
 
 {
-  const { layers, api } = await setup({ insert_after_submit: true })
+  const { layers, api } = await setup({ initial_mode: "normal", insert_after_submit: true })
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
   const editor: any = fakeTextarea()
@@ -542,7 +554,7 @@ async function setup(options: unknown = {}) {
 }
 
 {
-  const { layers, api } = await setup({ vim_langmap: { р: "h" } })
+  const { layers, api } = await setup({ initial_mode: "normal", vim_langmap: { р: "h" } })
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
   const bindingLayer = layers.find((layer) => layer.priority === 100)
   const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
