@@ -87,7 +87,7 @@ Configure the plugin in `tui.json`:
 | Option                          | Purpose                                       |
 | ------------------------------- | --------------------------------------------- |
 | `enabled`                       | Start with Vim mode enabled                   |
-| `initial_mode`                  | Start in `normal` (default) or `insert` mode  |
+| `initial_mode`                  | Start in `insert` (default) or `normal` mode  |
 | `vim_initial_mode`              | Alias for `initial_mode`                      |
 | `toggle_key`                    | Keybind for `Toggle vim mode`                 |
 | `indicator`                     | Show the prompt Vim indicator                 |
@@ -109,7 +109,7 @@ Configure the plugin in `tui.json`:
 
 ### Initial mode
 
-Vim mode starts in normal mode by default. To start with Vim mode enabled and the prompt ready for typing, use:
+Vim mode starts in insert mode by default. To start in normal mode instead, use:
 
 ```json
 {
@@ -118,7 +118,7 @@ Vim mode starts in normal mode by default. To start with Vim mode enabled and th
       "@leohenon/opencode-vim-plugin",
       {
         "enabled": true,
-        "vim_initial_mode": "insert"
+        "initial_mode": "normal"
       }
     ]
   ]

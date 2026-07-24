@@ -330,7 +330,7 @@ const tui: TuiPlugin = async (api, rawOptions) => {
   const [enabled, setEnabled] = createSignal(initialEnabled)
   const prompt = createPromptVim(api, {
     enabled,
-    initialMode: initialEnabled ? (options.initialMode ?? "normal") : "insert",
+    initialMode: initialEnabled ? (options.initialMode ?? "insert") : "insert",
     enterSubmit: options.enterSubmit,
     insertAfterSubmit: options.insertAfterSubmit,
     systemClipboardRegister: options.systemClipboardRegister,
