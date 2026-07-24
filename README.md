@@ -2,7 +2,7 @@
 
 # OpenCode Vim Plugin
 
-[![npm version](https://img.shields.io/npm/v/@leohenon/opencode-vim-plugin?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@leohenon/opencode-vim-plugin) [![Website](https://img.shields.io/badge/website-opencode--vim-7fa6a3?style=flat-square)](https://leohenon.github.io/opencode-vim/)
+[![npm version](https://img.shields.io/npm/v/@leohenon/opencode-vim-plugin?style=flat-square&logo=npm&logoColor=white&color=007ec6)](https://www.npmjs.com/package/@leohenon/opencode-vim-plugin) [![Website](https://img.shields.io/badge/website-opencode--vim-7fa6a3?style=flat-square)](https://leohenon.github.io/opencode-vim/)
 
 Adds Vim editing to the OpenCode prompt, including motions, operators, text objects, registers, visual mode, counts, undo/redo, and dot repeat.
 
@@ -84,28 +84,24 @@ Configure the plugin in `tui.json`:
 
 ### Options
 
+For options beginning with `vim_`, the prefix may be omitted in plugin configuration.
+
 | Option                          | Purpose                                       |
 | ------------------------------- | --------------------------------------------- |
 | `enabled`                       | Start with Vim mode enabled                   |
-| `initial_mode`                  | Start in `insert` (default) or `normal` mode  |
-| `vim_initial_mode`              | Alias for `initial_mode`                      |
+| `vim_initial_mode`              | Start in `insert` (default) or `normal` mode  |
 | `toggle_key`                    | Keybind for `Toggle vim mode`                 |
 | `indicator`                     | Show the prompt Vim indicator                 |
-| `enter_submit`                  | Submit with Enter from insert mode            |
-| `vim_enter_submit`              | Alias for `enter_submit`                      |
-| `insert_after_submit`           | Return to insert mode after submit            |
-| `vim_insert_after_submit`       | Alias for `insert_after_submit`               |
-| `system_clipboard_register`     | Use the system clipboard as Vim register      |
-| `vim_system_clipboard_register` | Alias for `system_clipboard_register`         |
-| `langmap`                       | Map non-English keys or simple aliases        |
-| `vim_langmap`                   | Alias for `langmap`                           |
-| `normal_leader`                 | Leader key for normal keybinds                |
-| `vim_normal_leader`             | Alias for `normal_leader`                     |
+| `vim_enter_submit`              | Submit with Enter from insert mode            |
+| `vim_insert_after_submit`       | Return to insert mode after submit            |
+| `vim_system_clipboard_register` | Use the system clipboard as Vim register      |
+| `vim_langmap`                   | Map non-English keys or simple aliases        |
+| `vim_normal_leader`             | Leader key for normal keybinds                |
 | `normal_keybinds`               | Extra keybinds active only in Vim normal mode |
 | `keybinds["vim.normal"]`        | Nested normal-mode keybind configuration      |
 
 > [!NOTE]
-> Unsupported ocv options: `vim_line_motions`, `vim_escape_sequence`.
+> Unsupported OCV options: `vim_line_motions`, `vim_escape_sequence`.
 
 ### Initial mode
 
@@ -118,7 +114,7 @@ Vim mode starts in insert mode by default. To start in normal mode instead, use:
       "@leohenon/opencode-vim-plugin",
       {
         "enabled": true,
-        "initial_mode": "normal"
+        "vim_initial_mode": "normal"
       }
     ]
   ]
@@ -135,7 +131,7 @@ Bind existing OpenCode commands only in Vim normal mode:
     [
       "@leohenon/opencode-vim-plugin",
       {
-        "normal_leader": "space",
+        "vim_normal_leader": "space",
         "normal_keybinds": {
           "<leader>s": "session.list",
           "j": "session.line.down",
