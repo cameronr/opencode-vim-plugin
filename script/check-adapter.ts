@@ -579,6 +579,45 @@ async function setup(options: unknown = { initial_mode: "normal" }) {
 }
 
 {
+  const { layers, api } = await setup()
+  const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
+  const key = commandLayer.commands.find((command: any) => command.name === "ocv-plugin.key")
+  const editor: any = fakeTextarea()
+  const stats = { layoutRefreshes: 0, renderRequests: 0 }
+  const layoutRefreshes = () => stats.layoutRefreshes
+  const renderRequests = () => stats.renderRequests
+  let resolveHostPaste: (() => void) | undefined
+  editor.getLayoutNode = () => ({ markDirty: () => stats.layoutRefreshes++ })
+  editor.onPaste = () =>
+    new Promise<void>((resolve) => {
+      resolveHostPaste = resolve
+    })
+  api.renderer.currentFocusedEditor = editor
+  api.renderer.requestRender = () => stats.renderRequests++
+  const keyEvent = (name: string) => ({
+    name,
+    sequence: name,
+    raw: name,
+    ctrl: false,
+    meta: false,
+    super: false,
+    shift: false,
+    preventDefault() {},
+    stopPropagation() {},
+  })
+
+  key.run({ event: keyEvent("i") })
+  editor.onPaste({ preventDefault() {}, stopPropagation() {} })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert(layoutRefreshes() === 0, "paste layout refresh should wait for the host paste handler")
+  resolveHostPaste?.()
+  await Promise.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert(layoutRefreshes() === 1, "completed pastes should refresh the prompt layout")
+  assert(renderRequests() === 1, "completed pastes should request a render after refreshing the prompt layout")
+}
+
+{
   const { layers, api } = await setup({ initial_mode: "normal", vim_langmap: { р: "h" } })
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.name === "ocv-plugin.key"))
   const bindingLayer = layers.find((layer) => layer.priority === 100)
