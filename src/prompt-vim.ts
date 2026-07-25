@@ -368,6 +368,17 @@ export function createPromptVim(
   }
 
   const patchedEditors = new Set<TextareaLike>()
+  const pasteLayoutTimers = new Set<ReturnType<typeof setTimeout>>()
+
+  function refreshPasteLayout(editor: TextareaLike) {
+    const timer = setTimeout(() => {
+      pasteLayoutTimers.delete(timer)
+      if (editor.isDestroyed) return
+      editor.getLayoutNode().markDirty()
+      api.renderer.requestRender()
+    }, 0)
+    pasteLayoutTimers.add(timer)
+  }
 
   function prunePatchedEditors() {
     for (const patched of patchedEditors) {
@@ -416,7 +427,15 @@ export function createPromptVim(
         event.stopPropagation()
         return
       }
-      return originalPaste?.call(editor, event)
+      const result = originalPaste?.call(editor, event) as unknown
+      if (typeof (result as PromiseLike<unknown> | undefined)?.then === "function") {
+        void Promise.resolve(result).then(
+          () => refreshPasteLayout(editor),
+          () => refreshPasteLayout(editor),
+        )
+      } else {
+        refreshPasteLayout(editor)
+      }
     }
     editor[PROMPT_RENDER_PATCH] = {
       original,
@@ -691,6 +710,8 @@ export function createPromptVim(
   function dispose() {
     handler.cancelPending()
     state.cancelEdit()
+    for (const timer of pasteLayoutTimers) clearTimeout(timer)
+    pasteLayoutTimers.clear()
     if (flashTimer) {
       clearTimeout(flashTimer)
       flashTimer = undefined
