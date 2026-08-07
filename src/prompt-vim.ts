@@ -341,6 +341,7 @@ export function createPromptVim(
     insertAfterSubmit?: boolean
     systemClipboardRegister?: boolean
     langmap?: () => Record<string, string> | undefined
+    vimEscapeSequence?: string
   },
 ) {
   let lastPromptEditor: TextareaLike | undefined
@@ -638,6 +639,7 @@ export function createPromptVim(
     copySearchStart: () => false,
     autocomplete: () => false,
     langmap: input.langmap,
+    vimEscapeSequence: input.vimEscapeSequence,
   })
 
   onPromptEditorChange = (previous) => {
