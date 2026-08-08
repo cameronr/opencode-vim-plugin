@@ -23,6 +23,7 @@ type Options = {
   insertAfterSubmit: boolean
   systemClipboardRegister: boolean
   langmap?: Record<string, string>
+  vimEscapeSequence?: string
   normalLeader?: string
   normalBindings: NormalBinding[]
 }
@@ -278,6 +279,8 @@ function readOptions(input: unknown): Options {
         ),
       )
     : undefined
+  const escapeSequenceInput = nonEmptyString(options.escape_sequence) ?? nonEmptyString(options.vim_escape_sequence)
+  const vimEscapeSequence = escapeSequenceInput?.length === 2 ? escapeSequenceInput : undefined
   const keybinds = isRecord(options.keybinds) && isRecord(options.keybinds["vim.normal"]) ? options.keybinds["vim.normal"] : undefined
   const normalLeader = nonEmptyString(options.normal_leader) ?? nonEmptyString(options.vim_normal_leader) ?? nonEmptyString(keybinds?.leader)
   return {
@@ -289,6 +292,7 @@ function readOptions(input: unknown): Options {
     insertAfterSubmit,
     systemClipboardRegister,
     langmap,
+    vimEscapeSequence,
     normalLeader,
     normalBindings: readNormalBindings(options, normalLeader),
   }
@@ -335,6 +339,7 @@ const tui: TuiPlugin = async (api, rawOptions) => {
     insertAfterSubmit: options.insertAfterSubmit,
     systemClipboardRegister: options.systemClipboardRegister,
     langmap: () => options.langmap,
+    vimEscapeSequence: options.vimEscapeSequence,
   })
   api.lifecycle.onDispose(prompt.dispose)
 

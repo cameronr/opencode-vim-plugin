@@ -99,9 +99,10 @@ For options beginning with `vim_`, the prefix may be omitted in plugin configura
 | `vim_normal_leader`             | Leader key for normal keybinds                |
 | `normal_keybinds`               | Extra keybinds active only in Vim normal mode |
 | `keybinds["vim.normal"]`        | Nested normal-mode keybind configuration      |
+| vim_escape_sequence             | Use a two-key escape sequence like jk         |
 
 > [!NOTE]
-> Unsupported OCV options: `vim_line_motions`, `vim_escape_sequence`.
+> Unsupported OCV options: `vim_line_motions`
 
 ### Initial mode
 
@@ -296,6 +297,16 @@ Or for simple aliases:
       }
     ]
   ]
+}
+```
+
+### Vim escape sequence
+
+Set a two-character sequence to leave insert mode without pressing Escape:
+
+```json
+{
+  "vim_escape_sequence": "jk"
 }
 ```
 
