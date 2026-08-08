@@ -306,7 +306,14 @@ Set a two-character sequence to leave insert mode without pressing Escape:
 
 ```json
 {
-  "vim_escape_sequence": "jk"
+  "plugin": [
+    [
+      "@leohenon/opencode-vim-plugin",
+      {
+        "vim_escape_sequence": "jk"
+      }
+    ]
+  ]
 }
 ```
 
