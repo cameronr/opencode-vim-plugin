@@ -25,6 +25,5 @@ export function useVimIndicator(input: {
     if (input.state.isReplace()) return "-- REPLACE --"
     if (input.state.isVisualLine()) return "-- VISUAL LINE --"
     if (input.state.isVisual()) return "-- VISUAL --"
-    return "-- NORMAL --"
   })
 }
