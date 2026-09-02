@@ -34,19 +34,17 @@
     "test": "bun test",
     "build": "bun run script/build.ts",
     "typecheck": "tsc --noEmit",
-    "check:keymap": "bun run script/check-keymap.ts",
     "check:adapter": "bun run script/check-adapter.ts",
-    "check": "bun run typecheck && bun run test && bun run check:keymap && bun run build && bun run check:adapter",
+    "check": "bun run typecheck && bun run test && bun run build && bun run check:adapter",
     "prepack": "bun run check"
   },
   "engines": {
-    "opencode": ">=1.17.10"
+    "opencode": ">=0.0.0-beta-18743"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.17.10",
-    "@opentui/core": ">=0.4.2",
-    "@opentui/keymap": ">=0.4.2",
-    "@opentui/solid": ">=0.4.2"
+    "@opencode-ai/plugin": "0.0.0-beta-18743",
+    "@opentui/core": ">=0.5.9",
+    "@opentui/solid": ">=0.5.9"
   },
   "peerDependenciesMeta": {
     "@opencode-ai/plugin": {
@@ -55,18 +53,15 @@
     "@opentui/core": {
       "optional": true
     },
-    "@opentui/keymap": {
-      "optional": true
-    },
     "@opentui/solid": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.17.10",
-    "@opentui/core": "^0.4.2",
-    "@opentui/keymap": "^0.4.2",
-    "@opentui/solid": "^0.4.2",
+    "@opencode-ai/plugin": "0.0.0-beta-18743",
+    "@opencode-ai/theme": "0.0.0-beta-18743",
+    "@opentui/core": "0.5.9",
+    "@opentui/solid": "0.5.9",
     "@types/bun": "latest",
     "solid-js": "1.9.12",
     "typescript": "^5.9.0"

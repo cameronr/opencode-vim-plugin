@@ -111,15 +111,28 @@ export function createVimRepeat(input: {
     textarea.cursorOffset = clampOffset(base.cursor + next.cursorOffset, textarea.plainText.length)
   }
 
+  // Mutations recorded here can be driven by the host itself (e.g. its own
+  // handleKeyPress inserting a printable character) rather than by vim's own
+  // key dispatch, so they can run while the host has pushed a non-"base"
+  // keymap mode (an open autocomplete list, for example). `input.snapshot`/
+  // `input.textarea` are gated on vim's own dispatch conditions and can throw
+  // in that situation, so snapshot directly from the recorder's captured
+  // textarea instance instead - it's already known to be the right one.
+  function recorderSnapshot(active: VimPatchRepeat): VimSnapshot {
+    const recorder = active.recorder
+    if (recorder) return { text: recorder.textarea.plainText, cursor: recorder.textarea.cursorOffset }
+    return input.snapshot()
+  }
+
   function recordTextEdit(active: VimPatchRepeat, before: VimSnapshot) {
     if (activeRepeat !== active || input.state.replaying()) return
-    const edit = textEdit(active.base, before, input.snapshot())
+    const edit = textEdit(active.base, before, recorderSnapshot(active))
     if (edit) active.edits.push(edit)
   }
 
   function recordMutation<T>(active: VimPatchRepeat, run: () => T) {
     if (mutationDepth) return run()
-    const before = input.snapshot()
+    const before = recorderSnapshot(active)
     mutationDepth++
     try {
       return run()

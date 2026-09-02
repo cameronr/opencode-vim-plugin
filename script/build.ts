@@ -18,7 +18,6 @@ const result = await Bun.build({
     "@opencode-ai/plugin",
     "@opencode-ai/plugin/tui",
     "@opentui/core",
-    "@opentui/keymap",
     "@opentui/solid",
     "solid-js",
   ],
