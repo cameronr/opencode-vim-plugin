@@ -208,6 +208,7 @@ const normalKeys: string[] = [
   "y",
   "p",
   "shift+p",
+  "q",
   "u",
   "ctrl+r",
   ".",

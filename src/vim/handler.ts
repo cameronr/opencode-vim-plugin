@@ -62,7 +62,10 @@ import {
   pasteOverSelection,
   pasteOverVisualSelection,
   previousParagraphOperation,
+  anyQuoteTextObjectOperation,
   bracketTextObjectOperation,
+  bufferTextObjectOperation,
+  paragraphTextObjectOperation,
   quoteTextObjectOperation,
   prevWordStart,
   replaceUnderCursor,
@@ -885,8 +888,17 @@ export function createVimHandler(input: {
     if ((key === '"' || key === "'" || key === "`") && !hasModifier(event)) {
       return () => quoteTextObjectOperation(input.textarea(), scope === "around", key)
     }
+    if (key === "q" && !event.shift && !hasModifier(event)) {
+      return () => anyQuoteTextObjectOperation(input.textarea(), scope === "around")
+    }
     if ("()[]{}<>".includes(key) && !hasModifier(event)) {
       return () => bracketTextObjectOperation(input.textarea(), scope === "around", key, operation)
+    }
+    if (key === "p" && !event.shift && !hasModifier(event)) {
+      return () => paragraphTextObjectOperation(input.textarea(), scope === "around")
+    }
+    if (key === "g" && !event.shift && !hasModifier(event)) {
+      return () => bufferTextObjectOperation(input.textarea())
     }
   }
 

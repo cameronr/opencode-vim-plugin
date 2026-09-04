@@ -51,6 +51,9 @@ Toggle via command palette > `Toggle vim mode` or slash command `/vim`.
 | Quote yanks                    | `yi"`, `ya"`, `yi'`, `ya'`, ``yi` ``, ``ya` ``                                                          |
 | Bracket yanks                  | `yi(`, `ya(`, `yi[`, `ya[`, `yi{`, `ya{`, `yi<`, `ya<`                                                  |
 | Matching / paragraph yanks     | `y%`, `y}`, `y{`                                                                                        |
+| Any quote objects              | `ciq`, `caq`, `diq`, `daq`, `yiq`, `yaq`                                                               |
+| Paragraph objects              | `cip`, `cap`, `dip`, `dap`, `yip`, `yap`                                                               |
+| Whole buffer objects           | `cig`, `cag`, `dig`, `dag`, `yig`, `yag`                                                               |
 | Put / undo / repeat            | `p`, `P`, `u`, `Ctrl+r`, `.`                                                                            |
 | Visual selection               | `v`, `V`                                                                                                |
 | Commands                       | `:` `:q`                                                                                                |
@@ -59,6 +62,9 @@ Numeric count prefixes are supported for motions and common operators.
 
 > [!NOTE]
 > `gg` and `G` move within the prompt when the prompt has text. On an empty prompt, they dispatch OpenCode's `session.first` and `session.last` commands.
+
+> [!NOTE]
+> As text objects, `p` is a blank-line-separated paragraph and `g` is the whole prompt buffer. That inverts vim, where the `g` paragraph object plays that role.
 
 ## Configuration
 

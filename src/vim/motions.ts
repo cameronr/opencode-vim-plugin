@@ -467,6 +467,59 @@ export function previousParagraphOperation(
   return buildOperatorResult(text, end > target ? { start: target, end } : null, null, true)
 }
 
+// A paragraph is a run of non-blank lines. A cursor on a blank line targets
+// the next paragraph, so a blank line is never part of a paragraph span.
+function paragraphBlockFirstLine(text: string, cursor: number): number | null {
+  let probe = lineStart(text, cursor)
+  while (isBlankLine(text, probe)) {
+    const end = lineEnd(text, probe)
+    if (end >= text.length) return null
+    probe = end + 1
+  }
+  return probe
+}
+
+function paragraphBlockLastLine(text: string, first: number): number {
+  let last = first
+  for (;;) {
+    const end = lineEnd(text, last)
+    if (end >= text.length) return last
+    if (isBlankLine(text, end + 1)) return last
+    last = end + 1
+  }
+}
+
+// Around consumes the blank lines bordering the block so a dap delete leaves
+// no leftover separator line between the remaining text.
+export function paragraphTextObjectOperation(textarea: TextareaRenderable, around: boolean): VimOperatorResult {
+  const text = textarea.plainText
+  if (!text.length) return { span: null, register: null }
+
+  const first = paragraphBlockFirstLine(text, textarea.cursorOffset)
+  if (first === null) return { span: null, register: null }
+
+  const last = paragraphBlockLastLine(text, first)
+  const lastEnd = lineEnd(text, last)
+  const after = lastEnd >= text.length ? text.length : lastEnd + 1
+
+  let start = first
+  if (around && first > 0 && text[first - 1] === "\n") start = lineStart(text, first - 1)
+
+  let end = after
+  if (around) {
+    while (end < text.length && text[end] === "\n") end = lineEnd(text, end) + 1
+  }
+
+  return buildOperatorResult(text, { start, end }, { start: first, end: lastEnd }, true)
+}
+
+// The whole buffer is a single extent; inside and around are the same span.
+export function bufferTextObjectOperation(textarea: TextareaRenderable): VimOperatorResult {
+  const text = textarea.plainText
+  if (!text.length) return { span: null, register: null }
+  return buildOperatorResult(text, { start: 0, end: text.length }, null, true)
+}
+
 function isWord(char: string) {
   return /[A-Za-z0-9_]/.test(char)
 }
@@ -732,6 +785,16 @@ function isEscaped(text: string, position: number) {
   let backslashes = 0
   for (let index = position - 1; index >= 0 && text[index] === "\\"; index--) backslashes++
   return backslashes % 2 === 1
+}
+
+// q matches the first quote kind with a pair on the cursor's line, in a fixed
+// order, so " always wins over ' and ` when both are present.
+export function anyQuoteTextObjectOperation(textarea: TextareaRenderable, around: boolean): VimOperatorResult {
+  for (const quote of ['"', "'", "`"]) {
+    const result = quoteTextObjectOperation(textarea, around, quote)
+    if (result.span) return result
+  }
+  return { span: null, register: null }
 }
 
 function deleteOffsets(textarea: TextareaRenderable, startOffset: number, endOffset: number) {
