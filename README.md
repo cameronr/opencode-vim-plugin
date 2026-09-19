@@ -53,7 +53,7 @@ Toggle via command palette > `Toggle vim mode` or slash command `/vim`.
 | Matching / paragraph yanks     | `y%`, `y}`, `y{`                                                                                        |
 | Any quote objects              | `ciq`, `caq`, `diq`, `daq`, `yiq`, `yaq`                                                               |
 | Paragraph objects              | `cip`, `cap`, `dip`, `dap`, `yip`, `yap`                                                               |
-| Whole buffer objects           | `cig`, `cag`, `dig`, `dag`, `yig`, `yag`                                                               |
+| Whole buffer objects           | `cil`, `cal`, `dil`, `dal`, `yil`, `yal`                                                               |
 | Put / undo / repeat            | `p`, `P`, `u`, `Ctrl+r`, `.`                                                                            |
 | Visual selection               | `v`, `V`                                                                                                |
 | Commands                       | `:` `:q`                                                                                                |
@@ -64,7 +64,7 @@ Numeric count prefixes are supported for motions and common operators.
 > `gg` and `G` move within the prompt when the prompt has text. On an empty prompt, they dispatch OpenCode's `session.first` and `session.last` commands.
 
 > [!NOTE]
-> As text objects, `p` is a blank-line-separated paragraph and `g` is the whole prompt buffer. That inverts vim, where the `g` paragraph object plays that role.
+> As text objects, `p` is a blank-line-separated paragraph and `l` is the whole prompt buffer, matching nvim 0.13's `al`/`il`.
 
 ## Configuration
 

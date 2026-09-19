@@ -202,54 +202,54 @@ describe("paragraph text objects", () => {
 })
 
 describe("whole buffer text objects", () => {
-  test("dag removes the whole buffer", async () => {
+  test("dal removes the whole buffer", async () => {
     const { textarea, press } = await setup("A\nB\nC", 1)
     press("d")
     press("a")
-    press("g")
+    press("l")
     expect(textarea.plainText).toBe("")
   })
 
-  test("dig removes the whole buffer", async () => {
+  test("dil removes the whole buffer", async () => {
     const { textarea, press } = await setup("A\nB\nC", 1)
     press("d")
     press("i")
-    press("g")
+    press("l")
     expect(textarea.plainText).toBe("")
   })
 
-  test("yag sets a linewise register for the buffer without editing", async () => {
+  test("yal sets a linewise register for the buffer without editing", async () => {
     const { textarea, state, press } = await setup("A\nB", 0)
     press("y")
     press("a")
-    press("g")
+    press("l")
     expect(textarea.plainText).toBe("A\nB")
     expect(state.register()).toEqual({ text: "A\nB\n", linewise: true })
   })
 
-  test("yig sets the same register as yag", async () => {
+  test("yil sets the same register as yal", async () => {
     const { textarea, state, press } = await setup("A\nB", 0)
     press("y")
     press("i")
-    press("g")
+    press("l")
     expect(textarea.plainText).toBe("A\nB")
     expect(state.register()).toEqual({ text: "A\nB\n", linewise: true })
   })
 
-  test("cag deletes the buffer and enters insert mode", async () => {
+  test("cal deletes the buffer and enters insert mode", async () => {
     const { textarea, state, press } = await setup("A\nB", 0)
     press("c")
     press("a")
-    press("g")
+    press("l")
     expect(textarea.plainText).toBe("")
     expect(state.mode()).toBe("insert")
   })
 
-  test("dag no-ops on an empty buffer", async () => {
+  test("dal no-ops on an empty buffer", async () => {
     const { textarea, press } = await setup("", 0)
     press("d")
     press("a")
-    press("g")
+    press("l")
     expect(textarea.plainText).toBe("")
   })
 })

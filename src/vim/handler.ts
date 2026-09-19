@@ -897,7 +897,7 @@ export function createVimHandler(input: {
     if (key === "p" && !event.shift && !hasModifier(event)) {
       return () => paragraphTextObjectOperation(input.textarea(), scope === "around")
     }
-    if (key === "g" && !event.shift && !hasModifier(event)) {
+    if (key === "l" && !event.shift && !hasModifier(event)) {
       return () => bufferTextObjectOperation(input.textarea())
     }
   }
