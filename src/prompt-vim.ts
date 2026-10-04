@@ -101,8 +101,23 @@ function hasModifier(event: { ctrl?: boolean; meta?: boolean; super?: boolean })
   return !!event.ctrl || !!event.meta || !!event.super
 }
 
+// opencode 2.0.22 renamed theme tokens (text.default -> text.base,
+// background.default -> background.base); accept either.
+type ThemeTokens = { text: Record<string, unknown>; background: Record<string, unknown> }
+
+function themeText(context: Context): RGBA {
+  const text = (context.theme as unknown as ThemeTokens).text
+  return (text.base ?? text.default) as RGBA
+}
+
+function themeBackground(context: Context): RGBA | undefined {
+  const background = (context.theme as unknown as ThemeTokens).background
+  return (background.base ?? background.default) as RGBA | undefined
+}
+
 function selectedForeground(context: Context, bg: RGBA) {
-  if (context.theme.background.default.a > 0) return context.theme.background.default
+  const background = themeBackground(context)
+  if (background && background.a > 0) return background
   return 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b > 0.5 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
 }
 
@@ -417,8 +432,9 @@ export function createPromptVim(
       if (row < 0 || row >= buffer.height) return
       if (col < 0 || col >= buffer.width) return
       const offset = (row * buffer.width + col) * 4
-      buffer.buffers.fg.set(selectedForeground(context, context.theme.text.default).buffer.subarray(0, 4), offset)
-      buffer.buffers.bg.set(context.theme.text.default.buffer.subarray(0, 4), offset)
+      const text = themeText(context)
+      buffer.buffers.fg.set(selectedForeground(context, text).buffer.subarray(0, 4), offset)
+      buffer.buffers.bg.set(text.buffer.subarray(0, 4), offset)
     }
     const originalClear = editor.clear
     const patchedClear: TextareaLike["clear"] = (...args) => {

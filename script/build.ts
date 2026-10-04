@@ -27,3 +27,8 @@ if (!result.success) {
   for (const log of result.logs) console.error(log)
   process.exit(1)
 }
+
+// opencode v2 provides its plugin API at runtime as "@opencode/plugin/tui";
+// "@opencode-ai/plugin" is only installed here for types.
+const output = "dist/tui.js"
+await Bun.write(output, (await Bun.file(output).text()).replaceAll('from "@opencode-ai/plugin/tui"', 'from "@opencode/plugin/tui"'))
