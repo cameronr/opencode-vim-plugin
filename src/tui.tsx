@@ -2,7 +2,7 @@
 
 import { Plugin } from "@opencode-ai/plugin/tui"
 import type { Context } from "@opencode-ai/plugin/tui/context"
-import { TextAttributes } from "@opentui/core"
+import { TextAttributes, type RGBA } from "@opentui/core"
 import { createEffect, Show, type Accessor } from "solid-js"
 import { createPromptVim } from "./prompt-vim"
 const PLUGIN_ID = "ocv-plugin"
@@ -314,7 +314,7 @@ function Status(props: {
     <Show when={props.indicator()}>
       {(indicator) => (
         <box paddingLeft={1} flexShrink={0}>
-          <text fg={props.theme.text.subdued} attributes={props.pending() || props.isVisual() ? TextAttributes.BOLD : undefined}>
+          <text fg={((props.theme.text as Record<string, unknown>).muted ?? (props.theme.text as Record<string, unknown>).subdued) as RGBA} attributes={props.pending() || props.isVisual() ? TextAttributes.BOLD : undefined}>
             {indicator()}
           </text>
         </box>
