@@ -6,9 +6,8 @@ import { createVimHandler, type VimEvent } from "./handler"
 import { createVimState } from "./state"
 
 // Expected values were captured from real nvim (0.12.5) with a headless
-// script; see the around-audit notes. Paragraph (dap/dip) is not covered
-// here: it intentionally follows the prompt-oriented spec in
-// text-object.test.ts instead of nvim's downward-only rule.
+// script; see the around-audit notes. Paragraph (dap/dip) is covered in
+// text-object.test.ts; dap follows nvim's downward-only blank-line rule.
 
 const renderers: TestRenderer[] = []
 const disposers: Array<() => void> = []

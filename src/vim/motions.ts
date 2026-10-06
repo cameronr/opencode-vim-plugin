@@ -494,8 +494,8 @@ function paragraphBlockLastLine(text: string, first: number): number {
   }
 }
 
-// Around consumes every blank line bordering the block on both sides so a
-// dap delete leaves no leftover separator line between the remaining text.
+// Around appends every blank line that follows the block, matching nvim's
+// dap; blank lines above the block are kept.
 export function paragraphTextObjectOperation(textarea: TextareaRenderable, around: boolean): VimOperatorResult {
   const text = textarea.plainText
   if (!text.length) return { span: null, register: null }
@@ -507,10 +507,7 @@ export function paragraphTextObjectOperation(textarea: TextareaRenderable, aroun
   const lastEnd = lineEnd(text, last)
   const after = lastEnd >= text.length ? text.length : lastEnd + 1
 
-  let start = first
-  while (around && start > 0 && isBlankLine(text, lineStart(text, start - 1))) {
-    start = lineStart(text, start - 1)
-  }
+  const start = first
 
   let end = after
   while (around && end < text.length && text[end] === "\n") end = lineEnd(text, end) + 1

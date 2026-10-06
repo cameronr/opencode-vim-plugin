@@ -135,12 +135,12 @@ describe("any quote text objects", () => {
 describe("paragraph text objects", () => {
   const text = "X\n\nA\nB\n\nC"
 
-  test("dap removes the block and its bordering blank lines", async () => {
+  test("dap removes the block and the blank lines after it", async () => {
     const { textarea, press } = await setup(text, 3)
     press("d")
     press("a")
     press("p")
-    expect(textarea.plainText).toBe("X\nC")
+    expect(textarea.plainText).toBe("X\n\nC")
   })
 
   test("dip removes only the block lines", async () => {
@@ -156,7 +156,7 @@ describe("paragraph text objects", () => {
     press("d")
     press("a")
     press("p")
-    expect(textarea.plainText).toBe("X\nC")
+    expect(textarea.plainText).toBe("X\n\nC")
   })
 
   test("dip deletes the whole block when the cursor is on a middle line", async () => {
@@ -172,7 +172,7 @@ describe("paragraph text objects", () => {
     press("d")
     press("a")
     press("p")
-    expect(textarea.plainText).toBe("X\nC")
+    expect(textarea.plainText).toBe("X\n\nC")
   })
 
   test("dap removes a single-paragraph buffer", async () => {
@@ -200,12 +200,12 @@ describe("paragraph text objects", () => {
     expect(state.register()).toEqual({ text: "A\nB\n", linewise: true })
   })
 
-  test("dap consumes all adjacent blanks above and below", async () => {
+  test("dap consumes all blank lines after the block, keeps the ones above", async () => {
     const { textarea, press } = await setup("X\n\n\nA\n\n\nC", 4)
     press("d")
     press("a")
     press("p")
-    expect(textarea.plainText).toBe("X\nC")
+    expect(textarea.plainText).toBe("X\n\n\nC")
   })
 
   test("dip leaves all adjacent blanks above and below", async () => {
