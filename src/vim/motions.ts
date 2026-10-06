@@ -637,16 +637,26 @@ function wordTextObjectBlankSpan(text: string, cursor: number, big: boolean): Vi
 }
 
 function wordTextObjectAroundBlankSpan(text: string, blank: VimSpan, big: boolean): VimSpan | null {
-  let end = blank.end
-  while (end < text.length && text[end] !== "\n" && wordClass(text[end], big) === "blank") end++
-  if (end >= text.length || text[end] === "\n") return null
+  const end = blank.end
+  if (end < text.length && text[end] !== "\n") {
+    // The run is followed on the same line: extend to the end of that word.
+    // nvim adds no trailing whitespace here (only the word-start branch does).
+    const inner = wordTextObjectInnerSpan(text, end, big)
+    return inner ? { start: blank.start, end: inner.end } : null
+  }
 
-  const inner = wordTextObjectInnerSpan(text, end, big)
-  if (!inner) return null
-  end = inner.end
-  while (end < text.length && text[end] !== "\n" && wordClass(text[end], big) === "blank") end++
+  // The run ends at EOL: nvim crosses at most that EOL and stops at the next blank line.
+  if (end >= text.length) return null
+  let pos = end + 1
+  while (pos < text.length) {
+    if (text[pos - 1] === "\n" && text[pos] === "\n") return { start: blank.start, end: pos }
+    if (wordClass(text[pos], big) !== "blank") break
+    pos++
+  }
+  if (pos >= text.length) return null
 
-  return { start: blank.start, end }
+  const inner = wordTextObjectInnerSpan(text, pos, big)
+  return inner ? { start: blank.start, end: inner.end } : null
 }
 
 export function bracketTextObjectOperation(
