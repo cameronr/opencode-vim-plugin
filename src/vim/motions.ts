@@ -494,8 +494,8 @@ function paragraphBlockLastLine(text: string, first: number): number {
   }
 }
 
-// Around consumes the blank lines bordering the block so a dap delete leaves
-// no leftover separator line between the remaining text.
+// Around consumes every blank line bordering the block on both sides so a
+// dap delete leaves no leftover separator line between the remaining text.
 export function paragraphTextObjectOperation(textarea: TextareaRenderable, around: boolean): VimOperatorResult {
   const text = textarea.plainText
   if (!text.length) return { span: null, register: null }
@@ -507,14 +507,13 @@ export function paragraphTextObjectOperation(textarea: TextareaRenderable, aroun
   const lastEnd = lineEnd(text, last)
   const after = lastEnd >= text.length ? text.length : lastEnd + 1
 
-  // first is a line start, so the blank line before it ends at first - 1.
   let start = first
-  if (around && first > 0) start = lineStart(text, first - 1)
+  while (around && start > 0 && isBlankLine(text, lineStart(text, start - 1))) {
+    start = lineStart(text, start - 1)
+  }
 
   let end = after
-  if (around) {
-    while (end < text.length && text[end] === "\n") end = lineEnd(text, end) + 1
-  }
+  while (around && end < text.length && text[end] === "\n") end = lineEnd(text, end) + 1
 
   return buildOperatorResult(text, { start, end }, { start: first, end: lastEnd }, true)
 }

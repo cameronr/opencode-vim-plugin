@@ -200,6 +200,22 @@ describe("paragraph text objects", () => {
     expect(state.register()).toEqual({ text: "A\nB\n", linewise: true })
   })
 
+  test("dap consumes all adjacent blanks above and below", async () => {
+    const { textarea, press } = await setup("X\n\n\nA\n\n\nC", 4)
+    press("d")
+    press("a")
+    press("p")
+    expect(textarea.plainText).toBe("X\nC")
+  })
+
+  test("dip leaves all adjacent blanks above and below", async () => {
+    const { textarea, press } = await setup("X\n\n\nA\n\n\nC", 4)
+    press("d")
+    press("i")
+    press("p")
+    expect(textarea.plainText).toBe("X\n\n\n\n\nC")
+  })
+
   test("dap consumes a trailing blank at end of buffer", async () => {
     const { textarea, press } = await setup("A\n\n", 0)
     press("d")
