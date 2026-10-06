@@ -638,8 +638,9 @@ export function createPromptVim(
       if (action === "top") context.keymap.dispatch("session.first")
       if (action === "bottom") context.keymap.dispatch("session.last")
     },
-    // Returning false makes "/" and "?" fall through to autocomplete/insert
-    // instead of the copy-mode search path (see handler.ts dispatch).
+    // The plugin has no copy-mode search or prompt autocomplete, so both are
+    // disabled: "/" and "?" are consumed as no-ops and "/" and "@" never
+    // insert (see the dispatch at the bottom of handler.ts handleKey).
     copySearchStart: () => false,
     autocomplete: () => false,
     langmap: input.langmap,

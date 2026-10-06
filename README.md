@@ -13,11 +13,11 @@ Adds Vim editing to the OpenCode prompt, including motions, operators, text obje
 Install globally:
 
 ```bash
-opencode plugin @leohenon/opencode-vim-plugin --global
+opencode plugin add @leohenon/opencode-vim-plugin
 ```
 
 > [!IMPORTANT]
-> Requires OpenCode 1.17.10 or newer.
+> Requires OpenCode v2 (`0.0.0-beta-18743` or newer).
 
 ## Usage
 
@@ -33,7 +33,7 @@ Toggle via command palette > `Toggle vim mode` or slash command `/vim`.
 | Line / buffer                  | `0`, `^`, `_`, `$`, `gg`, `G`                                                                           |
 | Display line                   | `gj`, `gk`, `g<Down>`, `g<Up>`, `g0`, `g^`, `g$`                                                        |
 | Matching / paragraph           | `%`, `{`, `}`                                                                                           |
-| Find / till                    | `f`, `F`, `t`, `T`, `;`, `,`                                                                            |
+| Find / till                    | `f`, `F`, `t`, `T`, `;`                                                                                 |
 | Scroll                         | `Ctrl+e`, `Ctrl+y`, `Ctrl+d`, `Ctrl+u`, `Ctrl+f`, `Ctrl+b`                                              |
 | Insert / replace               | `i`, `I`, `a`, `A`, `o`, `O`, `R`                                                                       |
 | Character / line edit          | `r`, `x`, `~`, `s`, `S`, `J`, `C`, `D`, `dd`, `cc`                                                      |
@@ -41,15 +41,15 @@ Toggle via command palette > `Toggle vim mode` or slash command `/vim`.
 | Word deletes                   | `dw`, `db`, `de`, `dW`, `dE`, `diw`, `daw`, `diW`, `daW`                                                |
 | Quote changes                  | `ci"`, `ca"`, `ci'`, `ca'`, ``ci` ``, ``ca` ``                                                          |
 | Quote deletes                  | `di"`, `da"`, `di'`, `da'`, ``di` ``, ``da` ``                                                          |
-| Bracket changes                | `ci(`, `ca(`, `ci[`, `ca[`, `ci{`, `ca{`, `ci<`, `ca<`                                                  |
-| Bracket deletes                | `di(`, `da(`, `di[`, `da[`, `di{`, `da{`, `di<`, `da<`                                                  |
+| Bracket changes                | `ci(`, `ca(`, `ci[`, `ca[`, `ci{`, `ca{`                                                               |
+| Bracket deletes                | `di(`, `da(`, `di[`, `da[`, `di{`, `da{`                                                               |
 | Find / till operators          | `cf`, `cF`, `ct`, `cT`, `df`, `dF`, `dt`, `dT`                                                          |
 | Matching / paragraph operators | `c%`, `d%`, `c}`, `c{`, `d}`, `d{`                                                                      |
 | Line boundary operators        | `c0`, `c^`, `c$`, `d0`, `d^`, `d$`, `y0`, `y^`, `y$`                                                    |
 | Display line operators         | `cgj`, `cgk`, `cg0`, `cg^`, `cg$`, `dgj`, `dgk`, `dg0`, `dg^`, `dg$`, `ygj`, `ygk`, `yg0`, `yg^`, `yg$` |
 | Line / word yanks              | `yy`, `yw`, `ye`, `yW`, `yE`, `yiw`, `yaw`, `yiW`, `yaW`                                                |
 | Quote yanks                    | `yi"`, `ya"`, `yi'`, `ya'`, ``yi` ``, ``ya` ``                                                          |
-| Bracket yanks                  | `yi(`, `ya(`, `yi[`, `ya[`, `yi{`, `ya{`, `yi<`, `ya<`                                                  |
+| Bracket yanks                  | `yi(`, `ya(`, `yi[`, `ya[`, `yi{`, `ya{`                                                               |
 | Matching / paragraph yanks     | `y%`, `y}`, `y{`                                                                                        |
 | Any quote objects              | `ciq`, `caq`, `diq`, `daq`, `yiq`, `yaq`                                                               |
 | Paragraph objects              | `cip`, `cap`, `dip`, `dap`, `yip`, `yap`                                                               |
@@ -66,16 +66,19 @@ Numeric count prefixes are supported for motions and common operators.
 > [!NOTE]
 > As text objects, `p` is a blank-line-separated paragraph and `l` is the whole prompt buffer, matching nvim 0.13's `al`/`il`.
 
+> [!NOTE]
+> OpenCode v2 splits keymap binds on commas, so a literal `,` key cannot be bound. Normal-mode repeat-find with `,` and the `<` bracket objects (`ci<`, `ca<`, `di<`, `da<`) are unavailable in v2.
+
 ## Configuration
 
-Configure the plugin in `tui.json`:
+Configure the plugin in `cli.json`, OpenCode v2's TUI configuration file:
 
 ```json
 {
-  "plugin": [
-    [
-      "@leohenon/opencode-vim-plugin",
-      {
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin",
+      "options": {
         "enabled": true,
         "toggle_key": "ctrl+shift+v",
         "indicator": true,
@@ -83,7 +86,7 @@ Configure the plugin in `tui.json`:
         "vim_insert_after_submit": false,
         "vim_system_clipboard_register": false
       }
-    ]
+    }
   ]
 }
 ```
@@ -102,10 +105,10 @@ For options beginning with `vim_`, the prefix may be omitted in plugin configura
 | `vim_insert_after_submit`       | Return to insert mode after submit            |
 | `vim_system_clipboard_register` | Use the system clipboard as Vim register      |
 | `vim_langmap`                   | Map non-English keys or simple aliases        |
-| `vim_normal_leader`             | Leader key for normal keybinds                |
+| `vim_normal_leader`             | Removed in v2. Configure the host `leader` keybind instead |
 | `normal_keybinds`               | Extra keybinds active only in Vim normal mode |
 | `keybinds["vim.normal"]`        | Nested normal-mode keybind configuration      |
-| vim_escape_sequence             | Use a two-key escape sequence like jk         |
+| `vim_escape_sequence`           | Use a two-key escape sequence like jk         |
 
 > [!NOTE]
 > Unsupported OCV options: `vim_line_motions`
@@ -116,14 +119,14 @@ Vim mode starts in insert mode by default. To start in normal mode instead, use:
 
 ```json
 {
-  "plugin": [
-    [
-      "@leohenon/opencode-vim-plugin",
-      {
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin",
+      "options": {
         "enabled": true,
         "vim_initial_mode": "normal"
       }
-    ]
+    }
   ]
 }
 ```
@@ -134,19 +137,28 @@ Bind existing OpenCode commands only in Vim normal mode:
 
 ```json
 {
-  "plugin": [
-    [
-      "@leohenon/opencode-vim-plugin",
-      {
-        "vim_normal_leader": "space",
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin",
+      "options": {
         "normal_keybinds": {
           "<leader>s": "session.list",
           "j": "session.line.down",
           "k": "session.line.up"
         }
       }
-    ]
+    }
   ]
+}
+```
+
+`<leader>` in a keybind is resolved by OpenCode itself, so set the host `leader` keybind in `cli.json`:
+
+```json
+{
+  "keybinds": {
+    "leader": "space"
+  }
 }
 ```
 
@@ -156,9 +168,7 @@ Bind existing OpenCode commands only in Vim normal mode:
 {
   "normal_keybinds": {
     "j": {
-      "command": "session.line.down",
-      "desc": "Scroll down",
-      "preventDefault": false
+      "command": "session.line.down"
     }
   }
 }
@@ -168,20 +178,19 @@ Nested normal-mode keybind configuration is also accepted inside the plugin opti
 
 ```json
 {
-  "plugin": [
-    [
-      "@leohenon/opencode-vim-plugin",
-      {
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin",
+      "options": {
         "keybinds": {
           "vim.normal": {
-            "leader": "space",
             "session_list": "<leader>s",
             "messages_line_up": "<leader>k",
             "messages_line_down": "<leader>j"
           }
         }
       }
-    ]
+    }
   ]
 }
 ```
@@ -194,13 +203,13 @@ To submit from insert mode too:
 
 ```json
 {
-  "plugin": [
-    [
-      "@leohenon/opencode-vim-plugin",
-      {
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin",
+      "options": {
         "vim_enter_submit": true
       }
-    ]
+    }
   ]
 }
 ```
@@ -209,13 +218,13 @@ To always default to insert mode after a prompt submission:
 
 ```json
 {
-  "plugin": [
-    [
-      "@leohenon/opencode-vim-plugin",
-      {
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin",
+      "options": {
         "vim_insert_after_submit": true
       }
-    ]
+    }
   ]
 }
 ```
@@ -248,13 +257,13 @@ Use the system clipboard as Vim's register:
 
 ```json
 {
-  "plugin": [
-    [
-      "@leohenon/opencode-vim-plugin",
-      {
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin",
+      "options": {
         "vim_system_clipboard_register": true
       }
-    ]
+    }
   ]
 }
 ```
@@ -272,10 +281,10 @@ Map non-English keyboard layout characters to Vim command keys.
 
 ```json
 {
-  "plugin": [
-    [
-      "@leohenon/opencode-vim-plugin",
-      {
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin",
+      "options": {
         "vim_langmap": {
           "р": "h",
           "о": "j",
@@ -283,7 +292,7 @@ Map non-English keyboard layout characters to Vim command keys.
           "д": "l"
         }
       }
-    ]
+    }
   ]
 }
 ```
@@ -292,16 +301,16 @@ Or for simple aliases:
 
 ```json
 {
-  "plugin": [
-    [
-      "@leohenon/opencode-vim-plugin",
-      {
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin",
+      "options": {
         "vim_langmap": {
           "H": "^",
           "L": "$"
         }
       }
-    ]
+    }
   ]
 }
 ```
@@ -312,20 +321,20 @@ Set a two-character sequence to leave insert mode without pressing Escape:
 
 ```json
 {
-  "plugin": [
-    [
-      "@leohenon/opencode-vim-plugin",
-      {
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin",
+      "options": {
         "vim_escape_sequence": "jk"
       }
-    ]
+    }
   ]
 }
 ```
 
 ## Want more?
 
-This plugin covers the prompt only. For Vim controls across the whole TUI — copy mode, session navigation — see [OpenCode Vim](https://github.com/leohenon/opencode-vim), a fork of OpenCode that this plugin shares its Vim core with.
+This plugin covers the prompt only. For Vim controls across the whole TUI - copy mode, session navigation - see [OpenCode Vim](https://github.com/leohenon/opencode-vim), a fork of OpenCode v1 that this plugin shares its Vim core with.
 
 ## Local development
 
@@ -334,7 +343,7 @@ bun install
 bun run check
 ```
 
-Launch a local installed OpenCode test workspace:
+Launch a local installed OpenCode v2 test workspace (uses `opencode2`; set `OPENCODE_BIN` to point elsewhere):
 
 ```bash
 ./script/test-installed.sh

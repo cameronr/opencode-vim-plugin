@@ -326,7 +326,8 @@ function Status(props: {
 // Registers the plugin's keymap layers. Must run inside a component so the
 // TUI's Keymap provider is in scope: keymap.layer is owned by the calling
 // component and throws "Keymap.Provider is missing" outside one. Rendered via
-// the always-mounted "app" slot so the layers live for the TUI's lifetime.
+// the prompt.footer.status slot, which is mounted on both the home and
+// session screens.
 function KeymapSetup(props: {
   context: Context
   options: Options
@@ -443,10 +444,9 @@ const plugin = Plugin.define({
       })
     }
 
-    // Keymap layers are registered from a component (KeymapSetup) rendered in
-    // the prompt.footer.status slot, because keymap.layer requires the TUI's
-    // Keymap provider to be in scope (it is owned by the calling component).
-    // That slot is rendered on both the home and session screens.
+    // Keymap layers are registered from KeymapSetup, rendered in the
+    // prompt.footer.status slot because keymap.layer requires the TUI's
+    // Keymap provider to be in scope (see KeymapSetup).
     const releaseStatusSlot = context.ui.slot({
       append: "prompt.footer.status",
       render: () => (
