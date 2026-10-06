@@ -159,6 +159,22 @@ describe("paragraph text objects", () => {
     expect(textarea.plainText).toBe("X\nC")
   })
 
+  test("dip deletes the whole block when the cursor is on a middle line", async () => {
+    const { textarea, press } = await setup(text, 5)
+    press("d")
+    press("i")
+    press("p")
+    expect(textarea.plainText).toBe("X\n\n\nC")
+  })
+
+  test("dap deletes the whole block when the cursor is on a middle line", async () => {
+    const { textarea, press } = await setup(text, 5)
+    press("d")
+    press("a")
+    press("p")
+    expect(textarea.plainText).toBe("X\nC")
+  })
+
   test("dap removes a single-paragraph buffer", async () => {
     const { textarea, press } = await setup("A\nB", 0)
     press("d")

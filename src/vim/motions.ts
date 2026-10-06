@@ -468,13 +468,18 @@ export function previousParagraphOperation(
 }
 
 // A paragraph is a run of non-blank lines. A cursor on a blank line targets
-// the next paragraph, so a blank line is never part of a paragraph span.
+// the next paragraph, so a blank line is never part of a paragraph span. A
+// cursor inside a block targets the whole block, so the search walks back
+// to the block's first line as well as forward past blank lines.
 function paragraphBlockFirstLine(text: string, cursor: number): number | null {
   let probe = lineStart(text, cursor)
   while (isBlankLine(text, probe)) {
     const end = lineEnd(text, probe)
     if (end >= text.length) return null
     probe = end + 1
+  }
+  while (probe > 0 && !isBlankLine(text, lineStart(text, probe - 1))) {
+    probe = lineStart(text, probe - 1)
   }
   return probe
 }
@@ -502,8 +507,9 @@ export function paragraphTextObjectOperation(textarea: TextareaRenderable, aroun
   const lastEnd = lineEnd(text, last)
   const after = lastEnd >= text.length ? text.length : lastEnd + 1
 
+  // first is a line start, so the blank line before it ends at first - 1.
   let start = first
-  if (around && first > 0 && text[first - 1] === "\n") start = lineStart(text, first - 1)
+  if (around && first > 0) start = lineStart(text, first - 1)
 
   let end = after
   if (around) {
