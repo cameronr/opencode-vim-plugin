@@ -41,15 +41,15 @@ Toggle via command palette > `Toggle vim mode` or slash command `/vim`.
 | Word deletes                   | `dw`, `db`, `de`, `dW`, `dE`, `diw`, `daw`, `diW`, `daW`                                                |
 | Quote changes                  | `ci"`, `ca"`, `ci'`, `ca'`, ``ci` ``, ``ca` ``                                                          |
 | Quote deletes                  | `di"`, `da"`, `di'`, `da'`, ``di` ``, ``da` ``                                                          |
-| Bracket changes                | `ci(`, `ca(`, `ci[`, `ca[`, `ci{`, `ca{`                                                               |
-| Bracket deletes                | `di(`, `da(`, `di[`, `da[`, `di{`, `da{`                                                               |
+| Bracket changes                | `ci(`, `ca(`, `ci[`, `ca[`, `ci{`, `ca{`, `ci<`, `ca<`                                                 |
+| Bracket deletes                | `di(`, `da(`, `di[`, `da[`, `di{`, `da{`, `di<`, `da<`                                                 |
 | Find / till operators          | `cf`, `cF`, `ct`, `cT`, `df`, `dF`, `dt`, `dT`                                                          |
 | Matching / paragraph operators | `c%`, `d%`, `c}`, `c{`, `d}`, `d{`                                                                      |
 | Line boundary operators        | `c0`, `c^`, `c$`, `d0`, `d^`, `d$`, `y0`, `y^`, `y$`                                                    |
 | Display line operators         | `cgj`, `cgk`, `cg0`, `cg^`, `cg$`, `dgj`, `dgk`, `dg0`, `dg^`, `dg$`, `ygj`, `ygk`, `yg0`, `yg^`, `yg$` |
 | Line / word yanks              | `yy`, `yw`, `ye`, `yW`, `yE`, `yiw`, `yaw`, `yiW`, `yaW`                                                |
 | Quote yanks                    | `yi"`, `ya"`, `yi'`, `ya'`, ``yi` ``, ``ya` ``                                                          |
-| Bracket yanks                  | `yi(`, `ya(`, `yi[`, `ya[`, `yi{`, `ya{`                                                               |
+| Bracket yanks                  | `yi(`, `ya(`, `yi[`, `ya[`, `yi{`, `ya{`, `yi<`, `ya<`                                                 |
 | Matching / paragraph yanks     | `y%`, `y}`, `y{`                                                                                        |
 | Any quote objects              | `ciq`, `caq`, `diq`, `daq`, `yiq`, `yaq`                                                               |
 | Paragraph objects              | `cip`, `cap`, `dip`, `dap`, `yip`, `yap`                                                               |
@@ -67,7 +67,7 @@ Numeric count prefixes are supported for motions and common operators.
 > As text objects, `p` is a blank-line-separated paragraph and `l` is the whole prompt buffer, matching nvim 0.13's `al`/`il`.
 
 > [!NOTE]
-> OpenCode v2 splits keymap binds on commas, so a literal `,` key cannot be bound. Normal-mode repeat-find with `,` and the `<` bracket objects (`ci<`, `ca<`, `di<`, `da<`) are unavailable in v2.
+> OpenCode v2 keymap binds are strings where commas separate multiple keys, so the literal `,` key has no bind string. The reverse repeat-find `,` is unavailable in v2. The same-direction repeat `;` and the `<` / `>` bracket objects still work.
 
 ## Configuration
 
