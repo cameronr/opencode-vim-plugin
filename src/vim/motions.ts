@@ -507,12 +507,12 @@ export function paragraphTextObjectOperation(textarea: TextareaRenderable, aroun
   const lastEnd = lineEnd(text, last)
   const after = lastEnd >= text.length ? text.length : lastEnd + 1
 
-  const start = first
-
   let end = after
   while (around && end < text.length && text[end] === "\n") end = lineEnd(text, end) + 1
 
-  return buildOperatorResult(text, { start, end }, { start: first, end: lastEnd }, true)
+  // The register is the operation span, like every other text object, so a
+  // linewise paste reproduces what around yanked or deleted.
+  return buildOperatorResult(text, { start: first, end }, null, true)
 }
 
 // The whole buffer is a single extent; inside and around are the same span.

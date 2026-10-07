@@ -200,6 +200,15 @@ describe("paragraph text objects", () => {
     expect(state.register()).toEqual({ text: "A\nB\n", linewise: true })
   })
 
+  test("yap sets a linewise register for the whole around span", async () => {
+    const { textarea, state, press } = await setup(text, 3)
+    press("y")
+    press("a")
+    press("p")
+    expect(textarea.plainText).toBe("X\n\nA\nB\n\nC")
+    expect(state.register()).toEqual({ text: "A\nB\n\n", linewise: true })
+  })
+
   test("dap consumes all blank lines after the block, keeps the ones above", async () => {
     const { textarea, press } = await setup("X\n\n\nA\n\n\nC", 4)
     press("d")
