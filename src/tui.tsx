@@ -1,9 +1,9 @@
 /** @jsxImportSource @opentui/solid */
 
-import { Plugin } from "@opencode-ai/plugin/tui"
-import type { Context } from "@opencode-ai/plugin/tui/context"
-import { TextAttributes } from "@opentui/core"
-import { createEffect, Show, type Accessor } from "solid-js"
+import { Plugin } from "@opencode/plugin/tui"
+import type { Context } from "@opencode/plugin/tui/context"
+import { TextAttributes, type TextRenderable } from "@opentui/core"
+import { type Accessor } from "solid-js"
 import { createPromptVim } from "./prompt-vim"
 const PLUGIN_ID = "ocv-plugin"
 const COMMAND_TOGGLE = "ocv-plugin.toggle"
@@ -295,31 +295,22 @@ function readOptions(input: unknown): Options {
 
 function Status(props: {
   indicator: Accessor<string | undefined>
-  pending: Accessor<string>
-  isVisual: Accessor<boolean>
   showIndicator: boolean
-  applyCursorStyle: () => void
   theme: Context["theme"]
+  onText: (text: TextRenderable | null) => void
 }) {
-  createEffect(() => {
-    props.indicator()
-    props.pending()
-    props.isVisual()
-    props.applyCursorStyle()
-  })
-
+  // The host renders this slot tree once and caches it, and never runs
+  // Solid effects or re-reads reactive props inside plugin trees. The text
+  // element is therefore persistent: its initial content is set here, and
+  // setup's syncIndicator rewrites content/attributes imperatively.
   if (!props.showIndicator) return null
 
   return (
-    <Show when={props.indicator()}>
-      {(indicator) => (
-        <box paddingLeft={1} flexShrink={0}>
-          <text fg={props.theme.text.subdued} attributes={props.pending() || props.isVisual() ? TextAttributes.BOLD : undefined}>
-            {indicator()}
-          </text>
-        </box>
-      )}
-    </Show>
+    <box paddingLeft={1} flexShrink={0}>
+      <text fg={props.theme.text.muted} ref={(text: TextRenderable | null) => props.onText(text)}>
+        {props.indicator() ?? ""}
+      </text>
+    </box>
   )
 }
 
@@ -444,6 +435,32 @@ const plugin = Plugin.define({
       })
     }
 
+    // The host renders the slot tree once and caches it, and does not run
+    // Solid effects or re-read reactive props inside plugin trees, so the
+    // indicator is updated imperatively: every mode change (vim key, toggle,
+    // editor change, submit) runs through prompt.setStyleSync, which
+    // rewrites the text element below and requests a frame.
+    let indicatorText: TextRenderable | null | undefined
+    let lastContent: string | undefined
+    let lastAttrs: number | undefined
+    const syncIndicator = () => {
+      const text = indicatorText
+      if (!text) return
+      const content = prompt.indicator() ?? ""
+      const mode = prompt.mode()
+      const attrs = prompt.pending() || mode === "visual" || mode === "visual-line" ? TextAttributes.BOLD : 0
+      // Only touch the element (and request a frame) when something changed:
+      // most consumed keys leave the indicator untouched.
+      if (content === lastContent && attrs === lastAttrs) return
+      lastContent = content
+      lastAttrs = attrs
+      text.content = content
+      text.attributes = attrs
+      text.fg = context.theme.text.muted
+      context.renderer.requestRender()
+    }
+    prompt.setStyleSync(syncIndicator)
+
     // Keymap layers are registered from KeymapSetup, rendered in the
     // prompt.footer.status slot because keymap.layer requires the TUI's
     // Keymap provider to be in scope (see KeymapSetup).
@@ -454,11 +471,12 @@ const plugin = Plugin.define({
           <KeymapSetup context={context} options={options} prompt={prompt} toggle={toggle} />
           <Status
             indicator={prompt.indicator}
-            pending={prompt.pending}
-            isVisual={prompt.isVisual}
             showIndicator={options.indicator}
-            applyCursorStyle={prompt.applyCursorStyle}
             theme={context.theme}
+            onText={(text) => {
+              indicatorText = text
+              syncIndicator()
+            }}
           />
         </>
       ),

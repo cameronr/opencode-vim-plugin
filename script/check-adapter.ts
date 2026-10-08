@@ -288,10 +288,10 @@ function fakeContext(options: unknown) {
     attention: { notify: async () => ({ ok: true, notification: false, sound: false }) },
     theme: {
       text: {
-        default: { r: 255, g: 255, b: 255, a: 1, buffer: new Uint16Array(4) },
-        subdued: { r: 128, g: 128, b: 128, a: 1, buffer: new Uint16Array(4) },
+        base: { r: 255, g: 255, b: 255, a: 1, buffer: new Uint16Array(4) },
+        muted: { r: 128, g: 128, b: 128, a: 1, buffer: new Uint16Array(4) },
       },
-      background: { default: { r: 0, g: 0, b: 0, a: 1, buffer: new Uint16Array(4) } },
+      background: { base: { r: 0, g: 0, b: 0, a: 1, buffer: new Uint16Array(4) } },
       hue: { accent: { 300: { r: 100, g: 150, b: 200, a: 1, buffer: new Uint16Array(4) } } },
     },
     themeMode: "dark",
@@ -683,11 +683,14 @@ function vimKey(layers: any[], bind: string) {
   editor.onPaste({ preventDefault() {}, stopPropagation() {} })
   await new Promise((resolve) => setTimeout(resolve, 0))
   assert(layoutRefreshes() === 0, "paste layout refresh should wait for the host paste handler")
+  // The indicator's imperative sync already requested frames for the mode
+  // change; the paste path must add exactly one of its own.
+  const rendersBeforePaste = renderRequests()
   resolveHostPaste?.()
   await Promise.resolve()
   await new Promise((resolve) => setTimeout(resolve, 0))
   assert(layoutRefreshes() === 1, "completed pastes should refresh the prompt layout")
-  assert(renderRequests() === 1, "completed pastes should request a render after refreshing the prompt layout")
+  assert(renderRequests() === rendersBeforePaste + 1, "completed pastes should request a render after refreshing the prompt layout")
 }
 
 {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@leohenon/opencode-vim-plugin",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Vim mode plugin for OpenCode.",
   "keywords": [
     "opencode",
@@ -39,15 +39,15 @@
     "prepack": "bun run check"
   },
   "engines": {
-    "opencode": ">=0.0.0-beta-18743"
+    "opencode": ">=2.0.25"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=0.0.0-beta-18743",
-    "@opentui/core": ">=0.5.9",
-    "@opentui/solid": ">=0.5.9"
+    "@opencode/plugin": ">=2.0.25",
+    "@opentui/core": ">=0.5.16",
+    "@opentui/solid": ">=0.5.16"
   },
   "peerDependenciesMeta": {
-    "@opencode-ai/plugin": {
+    "@opencode/plugin": {
       "optional": true
     },
     "@opentui/core": {
@@ -58,10 +58,10 @@
     }
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "0.0.0-beta-18743",
-    "@opencode-ai/theme": "0.0.0-beta-18743",
-    "@opentui/core": "0.5.9",
-    "@opentui/solid": "0.5.9",
+    "@opencode/plugin": "2.0.25",
+    "@opencode/theme": "2.0.25",
+    "@opentui/core": "0.5.16",
+    "@opentui/solid": "0.5.16",
     "@types/bun": "latest",
     "solid-js": "1.9.12",
     "typescript": "^5.9.0"

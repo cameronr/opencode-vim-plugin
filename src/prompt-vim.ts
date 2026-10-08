@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import type { Context, KeymapCommand } from "@opencode-ai/plugin/tui/context"
+import type { Context, KeymapCommand } from "@opencode/plugin/tui/context"
 import { RGBA, type TextareaRenderable } from "@opentui/core"
 import { createVimHandler, type VimEvent } from "./vim/handler"
 import { useVimIndicator } from "./vim/indicator"
@@ -102,7 +102,7 @@ function hasModifier(event: { ctrl?: boolean; meta?: boolean; super?: boolean })
 }
 
 function selectedForeground(context: Context, bg: RGBA) {
-  if (context.theme.background.default.a > 0) return context.theme.background.default
+  if (context.theme.background.base.a > 0) return context.theme.background.base
   return 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b > 0.5 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
 }
 
@@ -417,8 +417,8 @@ export function createPromptVim(
       if (row < 0 || row >= buffer.height) return
       if (col < 0 || col >= buffer.width) return
       const offset = (row * buffer.width + col) * 4
-      buffer.buffers.fg.set(selectedForeground(context, context.theme.text.default).buffer.subarray(0, 4), offset)
-      buffer.buffers.bg.set(context.theme.text.default.buffer.subarray(0, 4), offset)
+      buffer.buffers.fg.set(selectedForeground(context, context.theme.text.base).buffer.subarray(0, 4), offset)
+      buffer.buffers.bg.set(context.theme.text.base.buffer.subarray(0, 4), offset)
     }
     const originalClear = editor.clear
     const patchedClear: TextareaLike["clear"] = (...args) => {
@@ -485,6 +485,20 @@ export function createPromptVim(
     editor.cursorStyle = { style: "block", blinking: false }
     editor.showCursor = false
     editor.requestRender()
+  }
+
+  // The v2 TUI renders the plugin slot tree once and caches it: Solid
+  // effects and Show re-reads inside that tree never run on the host. The
+  // indicator is a plugin-owned element, so it is updated imperatively from
+  // the same call sites that restyle the cursor (every mode change goes
+  // through one of them).
+  let styleSync: (() => void) | undefined
+  function syncStyle() {
+    applyCursorStyle()
+    styleSync?.()
+  }
+  function setStyleSync(fn: () => void) {
+    styleSync = fn
   }
 
   function textarea() {
@@ -654,12 +668,14 @@ export function createPromptVim(
     state.resetHistory()
     if (mode === "visual" || mode === "visual-line" || mode === "replace") state.setMode("normal")
     else if (input.enabled() && mode === "insert") handler.beginInsertEdit()
+    syncStyle()
   }
   onPromptClear = () => {
     handler.cancelPending()
     state.resetHistory()
     state.setMode(input.insertAfterSubmit ? "insert" : "normal")
     if (input.enabled() && input.insertAfterSubmit) handler.beginInsertEdit()
+    syncStyle()
   }
 
   const indicator = useVimIndicator({
@@ -683,11 +699,11 @@ export function createPromptVim(
         if (state.isReplace()) handler.recordInsertText("\n")
         textarea().insertText("\n")
       }
-      applyCursorStyle()
+      syncStyle()
       return
     }
     const handled = handler.handleKey(keyEvent)
-    applyCursorStyle()
+    syncStyle()
     if (!handled) return false
   }
 
@@ -736,7 +752,8 @@ export function createPromptVim(
   return {
     dispose,
     cancelPending: handler.cancelPending,
-    applyCursorStyle,
+    applyCursorStyle: syncStyle,
+    setStyleSync,
     active: () => Boolean(promptEditor()),
     indicator,
     pending: state.pending,
