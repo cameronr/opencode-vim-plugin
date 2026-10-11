@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 
-import { InternalKeyHandler, KeyEvent, parseKeypress } from "@opentui/core"
+import { EventEmitter } from "node:events"
+import { CliRenderEvents, InternalKeyHandler, KeyEvent, parseKeypress } from "@opentui/core"
 import { RendererContext } from "@opentui/solid"
-import { createComponent, createRoot } from "solid-js"
+import { createComponent, createRoot, onCleanup } from "solid-js"
+import { createStore, produce } from "solid-js/store"
 
 export {}
 
@@ -272,11 +274,12 @@ function fakeContext(options: unknown) {
   const slots: any[] = []
   const dispatched: string[] = []
   const toasts: any[] = []
+  const storageSetters: Array<(mutate: (draft: any) => void) => void> = []
   const context: any = {
     options,
     location: undefined,
     app: { version: "test", channel: "test" },
-    renderer: { currentFocusedEditor: null, keyInput: new InternalKeyHandler(), requestRender() {} },
+    renderer: Object.assign(new EventEmitter(), { currentFocusedEditor: null, keyInput: new InternalKeyHandler(), requestRender() {} }),
     client: {},
     data: {},
     attention: { notify: async () => ({ ok: true, notification: false, sound: false }) },
@@ -295,7 +298,12 @@ function fakeContext(options: unknown) {
         const layer = input()
         for (const command of layer.commands ?? []) if (command.bind) parseBind(command.bind)
         layers.push(layer)
-        return () => {}
+        const release = () => {
+          const index = layers.indexOf(layer)
+          if (index !== -1) layers.splice(index, 1)
+        }
+        onCleanup(release)
+        return release
       },
       dispatch(id: string) {
         dispatched.push(id)
@@ -308,10 +316,11 @@ function fakeContext(options: unknown) {
     },
     storage: {
       store(_key: string, { initial }: { initial: any }) {
-        const state: any = { ...initial }
-        return [state, (mutate: (draft: any) => void) => {
-          mutate(state)
-          return Promise.resolve()
+        const [state, setState] = createStore(initial)
+        storageSetters.push((mutate) => setState(produce(mutate)))
+        return [state, async (mutate: (draft: any) => void) => {
+          await Promise.resolve()
+          setState(produce(mutate))
         }]
       },
       memory(_key: string, { initial }: { initial: any }) {
@@ -326,30 +335,33 @@ function fakeContext(options: unknown) {
       router: { register: () => () => {}, navigate() {}, current: () => ({ type: "home" }) },
       tabs: { enabled: () => false, list: () => [], open: () => false, focus: () => false, close: () => false },
       slot(claim: any) {
-        slots.push(claim)
-        // The host TUI renders slot claims inside a reactive root backed by
-        // the CliRenderer; the plugin registers its keymap layers from that
-        // render (KeymapSetup). Mirror that with a fake renderer context.
-        createRoot(() => {
-          createComponent(RendererContext.Provider, {
-            value: FAKE_RENDERER,
-            get children() {
-              return claim.render()
-            },
-          })
-        })
-        return () => {}
+        const mounts: Array<{ tree: any; dispose: () => void }> = []
+        const mount = () => {
+          const rendered = createRoot((dispose) => ({
+            dispose,
+            tree: createComponent(RendererContext.Provider, {
+              value: FAKE_RENDERER,
+              get children() {
+                return claim.render()
+              },
+            }),
+          }))
+          mounts.push(rendered)
+          return rendered
+        }
+        slots.push({ ...claim, ...mount(), mount })
+        return () => mounts.forEach((item) => item.dispose())
       },
     },
   }
-  return { context, layers, slots, dispatched, toasts }
+  return { context, layers, slots, dispatched, toasts, storageSetters }
 }
 
 async function setup(options: unknown = { initial_mode: "normal" }) {
   const plugin = ((await import("../dist/tui.js" as string)) as any).default
-  const { context, layers, slots, dispatched, toasts } = fakeContext(options)
-  const cleanup = await plugin.setup(context)
-  return { context, layers, slots, dispatched, toasts, cleanup }
+  const result = fakeContext(options)
+  const cleanup = await plugin.setup(result.context)
+  return { ...result, cleanup }
 }
 
 function vimKey(layers: any[], bind: string) {
@@ -417,6 +429,78 @@ for (const options of [{ initial_mode: "insert" }, { initial_mode: "normal", ena
   const layer = layers.find((item) => item.priority === 200)
   assert(layer, "normal-only sequence layer should register")
   assert(layer.enabled?.() === false, "normal-only prefixes must be disabled before matching insert or disabled-Vim input")
+  await cleanup?.()
+}
+
+for (const indicator of [true, false]) {
+  const plugin = ((await import("../dist/tui.js" as string)) as any).default
+  const { context } = fakeContext({ initial_mode: "normal", indicator })
+  let nativePastes = 0
+  const editors = [fakeTextarea(), fakeTextarea()]
+  const nativePaste = () => { nativePastes++ }
+  for (const editor of editors) editor.onPaste = nativePaste
+  context.renderer.currentFocusedEditor = editors[0]
+  const cleanup = await plugin.setup(context)
+  for (const [index, editor] of editors.entries()) {
+    if (index > 0) {
+      editors[0].focused = false
+      context.renderer.currentFocusedEditor = editor
+      context.renderer.emit(CliRenderEvents.FOCUSED_EDITOR, editor, editors[0])
+    }
+    assert(editor.showCursor === false, "initial and newly focused normal prompts should hide the native cursor before a keypress")
+    assert(editor.onPaste !== nativePaste, "initial and newly focused prompts should install paste protection before a keypress")
+    let prevented = false
+    editor.onPaste?.({ preventDefault() { prevented = true }, stopPropagation() {} })
+    assert(prevented && nativePastes === 0, "normal-mode paste should not reach the host before the first Vim key")
+  }
+  await cleanup?.()
+  assert(context.renderer.listenerCount(CliRenderEvents.FOCUSED_EDITOR) === 0, "cleanup should remove the editor focus listener")
+  assert(editors.every((editor) => editor.showCursor === true && editor.onPaste === nativePaste), "cleanup should restore editors initialized without keypresses")
+}
+
+{
+  const { context, layers, slots, dispatched, cleanup } = await setup()
+  const app = slots.find((claim) => claim.append === "app")
+  assert(app, "persistent global commands should claim the app slot")
+  const commands = layers.find((layer) => layer.commands?.some((command: any) => command.id === "ocv-plugin.toggle"))
+  const footer = slots.find((claim) => claim.append === "prompt.footer.status")
+  footer.dispose()
+  context.ui.router.current = () => ({ type: "plugin", id: "opencode.stats" })
+  assert(layers.includes(commands), "global commands should survive prompt footer unmount")
+  assert(!layers.some((layer) => layer.priority === 100), "prompt editing bindings should remain footer-scoped")
+  commands.commands.find((command: any) => command.id === "ocv-plugin.toggle").run()
+  commands.commands.find((command: any) => command.id === "ocv-plugin.quit").run()
+  assert(dispatched.at(-1) === "app.exit", "persistent Quit should dispatch outside prompt routes")
+  await cleanup?.()
+  assert(!layers.includes(commands), "plugin cleanup should release persistent commands")
+}
+
+for (const indicator of [true, false]) {
+  const { context, slots, cleanup } = await setup({ initial_mode: "normal", indicator })
+  const editor: any = fakeTextarea()
+  let nativePastes = 0
+  editor.onPaste = () => nativePastes++
+  context.renderer.currentFocusedEditor = editor
+  slots[0].mount()
+  assert(editor.showCursor === false, "mounting a normal prompt should hide the native cursor before any keypress")
+  let prevented = false
+  editor.onPaste({ preventDefault() { prevented = true }, stopPropagation() {} })
+  assert(prevented && nativePastes === 0, "mounting a normal prompt should install paste protection without relying on its indicator")
+  await cleanup?.()
+}
+
+{
+  const { context, layers, slots, cleanup } = await setup({ initial_mode: "insert", indicator: false })
+  const editor: any = fakeTextarea()
+  const originalInsertText = editor.insertText
+  context.renderer.currentFocusedEditor = editor
+  slots[0].mount()
+  assert(editor.insertText !== originalInsertText, "mounting an insert prompt should start its recorder before a bound key")
+  editor.plainText = "漢字"
+  editor.cursorOffset = editor.plainText.length
+  vimKey(layers, "escape")()
+  vimKey(layers, "u")()
+  assert(editor.plainText === "", "initial IME-style input should be undoable after prompt mount")
   await cleanup?.()
 }
 
@@ -702,6 +786,41 @@ for (const bind of [",", " , ", "ctrl+,", "ctrl+, ", "x,,y", "x, ,y"]) {
   vimKey(layers, "g")()
   vimKey(layers, "j")()
   assert(editor.plainText === "a\nb", "toggling Vim should clear handler-private pending operator state")
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  editor.plainText = "abc"
+  editor.cursorOffset = 0
+  vimKey(layers, "x")()
+  assert(editor.plainText === "bc", "rapid toggles should leave Vim enabled after persistence finishes")
+}
+
+{
+  const { layers, context, slots, storageSetters, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  const defaultCursorStyle = { style: "block", blinking: false }
+  editor.cursorStyle = defaultCursorStyle
+  context.renderer.currentFocusedEditor = editor
+  const first = slots[0].tree()[1].getChildren()[0]
+  const second = slots[0].mount().tree()[1].getChildren()[0]
+  vimKey(layers, "i")()
+  assert(first.plainText === "-- INSERT --" && second.plainText === first.plainText, "every mounted footer should show insert mode")
+  slots[0].dispose()
+  const remounted = slots[0].mount().tree()[1].getChildren()[0]
+  vimKey(layers, "escape")()
+  assert(remounted.plainText === "", "remounted footer should update back to normal mode")
+  storageSetters[0]((draft) => { draft.enabled = false })
+  assert(editor.showCursor === true && editor.cursorStyle === defaultCursorStyle, "external stored state should restore the native cursor")
+  await cleanup?.()
+}
+
+{
+  const plugin = ((await import("../dist/tui.js" as string)) as any).default
+  const { context, layers, toasts } = fakeContext({ initial_mode: "normal" })
+  context.storage.store = (_key: string, { initial }: any) => [initial, async () => { throw new Error("write failed") }]
+  const cleanup = await plugin.setup(context)
+  layers.flatMap((layer) => layer.commands ?? []).find((command: any) => command.id === "ocv-plugin.toggle").run()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert(toasts.some((toast) => toast.variant === "error" && String(toast.message).includes("save")), "storage failure should be reported without an unhandled rejection")
+  await cleanup?.()
 }
 
 {
@@ -861,6 +980,34 @@ for (const bind of [",", " , ", "ctrl+,", "ctrl+, ", "x,,y", "x, ,y"]) {
   context.renderer.currentFocusedEditor = second
   vimKey(layers, "u")()
   assert(second.plainText === "new", "switching prompt editors should isolate Vim undo history")
+}
+
+for (const dialogOpen of [false, true]) {
+  const { layers, context, cleanup } = await setup()
+  const editors: any[] = [fakeTextarea(), fakeTextarea()]
+  const styles = [{ style: "line", blinking: true }, { style: "block", blinking: false }]
+  for (const [index, editor] of editors.entries()) {
+    editor.cursorStyle = styles[index]
+    context.renderer.currentFocusedEditor = editor
+    vimKey(layers, "h")()
+    assert(editor.showCursor === false, "normal mode should hide the native prompt cursor")
+  }
+  editors[0].focused = false
+  if (dialogOpen) {
+    context.keymap.mode.current = () => "dialog"
+    context.renderer.currentFocusedEditor = fakeTextarea()
+  }
+  const toggle = layers.flatMap((layer) => layer.commands ?? []).find((command: any) => command.id === "ocv-plugin.toggle")
+  toggle.run()
+  for (const [index, editor] of editors.entries()) {
+    assert(editor.showCursor === true, `disabling Vim should restore every prompt cursor (dialog: ${dialogOpen})`)
+    assert(editor.cursorStyle === styles[index], "disabling Vim should restore each prompt's original cursor style")
+  }
+  context.keymap.mode.current = () => "base"
+  editors[0].focused = true
+  context.renderer.currentFocusedEditor = editors[0]
+  assert(vimKey(layers, "q")() === false && editors[0].showCursor === true, "refocusing a disabled prompt should preserve its native cursor")
+  await cleanup?.()
 }
 
 {

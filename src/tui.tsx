@@ -3,7 +3,7 @@
 import { Plugin } from "@opencode/plugin/tui"
 import type { Context } from "@opencode/plugin/tui/context"
 import { TextAttributes, type TextRenderable } from "@opentui/core"
-import { type Accessor } from "solid-js"
+import { createEffect, createRoot, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 import { createPromptVim } from "./prompt-vim"
 const PLUGIN_ID = "ocv-plugin"
 const COMMAND_TOGGLE = "ocv-plugin.toggle"
@@ -301,35 +301,33 @@ function Status(props: {
   indicator: Accessor<string | undefined>
   showIndicator: boolean
   theme: Context["theme"]
-  onText: (text: TextRenderable | null) => void
+  onText: (text: TextRenderable) => () => void
 }) {
   // The host renders this slot tree once and caches it, and never runs
   // Solid effects or re-reads reactive props inside plugin trees. The text
   // element is therefore persistent: its initial content is set here, and
   // setup's syncIndicator rewrites content/attributes imperatively.
+  let releaseText: (() => void) | undefined
+  onCleanup(() => releaseText?.())
   if (!props.showIndicator) return null
 
   return (
     <box paddingLeft={1} flexShrink={0}>
-      <text fg={props.theme.text.muted} ref={(text: TextRenderable | null) => props.onText(text)}>
+      <text
+        fg={props.theme.text.muted}
+        ref={(text: TextRenderable | null) => {
+          releaseText?.()
+          releaseText = text ? props.onText(text) : undefined
+        }}
+      >
         {props.indicator() ?? ""}
       </text>
     </box>
   )
 }
 
-// Registers the plugin's keymap layers. Must run inside a component so the
-// TUI's Keymap provider is in scope: keymap.layer is owned by the calling
-// component and throws "Keymap.Provider is missing" outside one. Rendered via
-// the prompt.footer.status slot, which is mounted on both the home and
-// session screens.
-function KeymapSetup(props: {
-  context: Context
-  options: Options
-  prompt: ReturnType<typeof createPromptVim>
-  toggle: () => void
-}) {
-  const { context, options, prompt, toggle } = props
+function GlobalCommands(props: { context: Context; toggle: () => void }) {
+  const { context, toggle } = props
   context.keymap.layer(() => ({
     mode: "global",
     commands: [
@@ -350,6 +348,17 @@ function KeymapSetup(props: {
       },
     ],
   }))
+  return null
+}
+
+function KeymapSetup(props: {
+  context: Context
+  options: Options
+  prompt: ReturnType<typeof createPromptVim>
+  toggle: () => void
+}) {
+  const { context, options, prompt, toggle } = props
+  onMount(prompt.applyCursorStyle)
   context.keymap.layer(() => ({
     mode: "base",
     priority: 100,
@@ -399,7 +408,10 @@ const plugin = Plugin.define({
   setup(context) {
     const options = readOptions(context.options)
     const [enabledStore, setEnabledStore] = context.storage.store(KV_ENABLED, { initial: { enabled: options.enabled } })
-    const enabled = () => enabledStore.enabled
+    const [enabled, setEnabled] = createSignal(enabledStore.enabled)
+    let enabledWrites = 0
+    let enabledWrite = Promise.resolve()
+    let disposed = false
     const prompt = createPromptVim(context, {
       enabled,
       initialMode: enabled() ? (options.initialMode ?? "insert") : "insert",
@@ -410,12 +422,40 @@ const plugin = Plugin.define({
       vimEscapeSequence: options.vimEscapeSequence,
     })
 
+    function syncEnabledStore() {
+      const stored = enabledStore.enabled
+      const current = enabled()
+      if (disposed || enabledWrites || current === stored) return
+      setEnabled(stored)
+      prompt.applyCursorStyle()
+    }
+    const disposeEnabledSync = createRoot((dispose) => {
+      createEffect(syncEnabledStore)
+      return dispose
+    })
+
     function toggle() {
       prompt.cancelPending()
       const next = !enabled()
-      void setEnabledStore((draft) => {
-        draft.enabled = next
-      })
+      enabledWrites++
+      setEnabled(next)
+      const write = enabledWrite.catch(() => {}).then(() =>
+        setEnabledStore((draft) => {
+          draft.enabled = next
+        }),
+      )
+      enabledWrite = write
+      void write.then(
+        () => {
+          enabledWrites--
+          syncEnabledStore()
+        },
+        () => {
+          enabledWrites--
+          syncEnabledStore()
+          if (!disposed) context.ui.toast.show({ variant: "error", message: "Failed to save Vim mode state" })
+        },
+      )
       if (next) prompt.setMode("normal")
       prompt.applyCursorStyle()
       context.ui.toast.show({
@@ -442,30 +482,26 @@ const plugin = Plugin.define({
     // indicator is updated imperatively: every mode change (vim key, toggle,
     // editor change, submit) runs through prompt.setStyleSync, which
     // rewrites the text element below and requests a frame.
-    let indicatorText: TextRenderable | null | undefined
-    let lastContent: string | undefined
-    let lastAttrs: number | undefined
+    const indicatorTexts = new Map<TextRenderable, { content?: string; attrs?: number }>()
     const syncIndicator = () => {
-      const text = indicatorText
-      if (!text) return
       const content = prompt.indicator() ?? ""
       const mode = prompt.mode()
       const attrs = prompt.pending() || mode === "visual" || mode === "visual-line" ? TextAttributes.BOLD : 0
-      // Only touch the element (and request a frame) when something changed:
-      // most consumed keys leave the indicator untouched.
-      if (content === lastContent && attrs === lastAttrs) return
-      lastContent = content
-      lastAttrs = attrs
-      text.content = content
-      text.attributes = attrs
-      text.fg = context.theme.text.muted
-      context.renderer.requestRender()
+      let changed = false
+      for (const [text, previous] of indicatorTexts) {
+        if (content === previous.content && attrs === previous.attrs) continue
+        previous.content = content
+        previous.attrs = attrs
+        text.content = content
+        text.attributes = attrs
+        text.fg = context.theme.text.muted
+        changed = true
+      }
+      if (changed) context.renderer.requestRender()
     }
     prompt.setStyleSync(syncIndicator)
 
-    // Keymap layers are registered from KeymapSetup, rendered in the
-    // prompt.footer.status slot because keymap.layer requires the TUI's
-    // Keymap provider to be in scope (see KeymapSetup).
+    // Keep editing bindings scoped to the prompt.
     const releaseStatusSlot = context.ui.slot({
       append: "prompt.footer.status",
       render: () => (
@@ -476,16 +512,26 @@ const plugin = Plugin.define({
             showIndicator={options.indicator}
             theme={context.theme}
             onText={(text) => {
-              indicatorText = text
+              indicatorTexts.set(text, {})
               syncIndicator()
+              return () => indicatorTexts.delete(text)
             }}
           />
         </>
       ),
     })
 
+    const releaseCommandsSlot = context.ui.slot({
+      append: "app",
+      render: () => <GlobalCommands context={context} toggle={toggle} />,
+    })
+
     return () => {
+      disposed = true
+      disposeEnabledSync()
+      releaseCommandsSlot()
       releaseStatusSlot()
+      indicatorTexts.clear()
       prompt.dispose()
     }
   },

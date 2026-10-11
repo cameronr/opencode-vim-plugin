@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process"
 import type { Context, KeymapCommand } from "@opencode/plugin/tui/context"
-import { RGBA, type KeyEvent, type TextareaRenderable } from "@opentui/core"
+import { CliRenderEvents, RGBA, type KeyEvent, type TextareaRenderable } from "@opentui/core"
 import { createVimHandler, type VimEvent } from "./vim/handler"
 import { useVimIndicator } from "./vim/indicator"
 import { createVimState, type VimMode, type VimRegister } from "./vim/state"
@@ -425,14 +425,17 @@ export function createPromptVim(
   }
 
   function applyCursorStyle() {
+    if (!input.enabled()) {
+      prunePatchedEditors()
+      for (const editor of patchedEditors) {
+        const patch = editor[PROMPT_RENDER_PATCH]
+        if (patch) restorePromptAppearance(editor, patch)
+      }
+      return
+    }
     const editor = currentPromptEditor()
     if (!editor) return
     patchPromptEditor(editor)
-    const patch = editor[PROMPT_RENDER_PATCH]!
-    if (!input.enabled()) {
-      restorePromptAppearance(editor, patch)
-      return
-    }
     const visual = state.isVisual()
     editor.selectionBg = visual ? context.theme.hue.accent[300] : undefined
     editor.selectionFg = visual ? selectedForeground(context, context.theme.hue.accent[300]) : undefined
@@ -685,7 +688,11 @@ export function createPromptVim(
     run: (_input, event) => event ? runVimKey(event) : false,
   }]
 
+  context.renderer.on(CliRenderEvents.FOCUSED_EDITOR, syncStyle)
+  syncStyle()
+
   function dispose() {
+    context.renderer.off(CliRenderEvents.FOCUSED_EDITOR, syncStyle)
     context.renderer.keyInput.off("keypress", onComma)
     handler.cancelPending()
     state.cancelEdit()
