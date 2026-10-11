@@ -225,6 +225,10 @@ function keyToBind(key: unknown): string | undefined {
   return [...mods, name].join("+")
 }
 
+function hasEmptyCommaEntry(bind: string) {
+  return bind.split(",").some((entry) => entry.trim() === "")
+}
+
 function bindingFromValue(command: string, value: unknown): NormalBinding[] {
   const bind = keyToBind(value)
   if (bind) return bind === "none" ? [] : [{ bind, cmd: command }]
@@ -327,6 +331,7 @@ function KeymapSetup(props: {
 }) {
   const { context, options, prompt, toggle } = props
   context.keymap.layer(() => ({
+    mode: "global",
     commands: [
       {
         id: COMMAND_TOGGLE,
@@ -364,14 +369,13 @@ function KeymapSetup(props: {
       })
     }
   }
-  // v2 splits bind strings on commas, so literal comma binds cannot be
-  // registered; degrade the rest of the user's config instead of failing.
-  const normalBindings = options.normalBindings.filter((binding) => !binding.bind.includes(","))
+  const normalBindings = options.normalBindings.filter((binding) => !hasEmptyCommaEntry(binding.bind))
   if (normalBindings.length > 0) {
     try {
       context.keymap.layer(() => ({
         mode: "base",
         priority: 200,
+        enabled: () => prompt.active() && prompt.mode() === "normal",
         commands: normalBindings.map((binding) => ({
           bind: binding.bind,
           run: () => {
@@ -420,12 +424,10 @@ const plugin = Plugin.define({
       })
     }
 
-    // v2 splits bind strings on commas, so literal comma binds cannot be
-    // registered; warn instead of failing.
-    if (options.normalBindings.some((binding) => binding.bind.includes(","))) {
+    if (options.normalBindings.some((binding) => hasEmptyCommaEntry(binding.bind))) {
       context.ui.toast.show({
         variant: "warning",
-        message: "Vim plugin: comma keybinds are not supported in OpenCode v2 and were skipped",
+        message: "Vim plugin: literal comma keys and empty comma-separated keybind entries are not supported in OpenCode v2 and were skipped",
       })
     }
     if (options.normalLeader) {

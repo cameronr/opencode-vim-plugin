@@ -194,7 +194,7 @@ export function createVimHandler(input: {
   setCopyCol?: (offset: number) => void
   setCopyStick?: (stick: "start" | "first" | "end") => void
   copyScroll?: (action: "center" | "top" | "bottom") => void
-  autocomplete?: () => false | "@" | "/"
+  autocomplete?: (trigger: "@" | "/") => false | "@" | "/"
   flash?: (span: { start: number; end: number }) => void
   history?: () => boolean
   snapshot?: () => VimSnapshot
@@ -1420,7 +1420,7 @@ export function createVimHandler(input: {
     }
 
     if ((key === "/" || key === "@") && !hasModifier(event)) {
-      const autocomplete = input.autocomplete?.()
+      const autocomplete = input.autocomplete?.(key)
       if (autocomplete && input.textarea().cursorOffset === 0 && input.textarea().plainText.length === 0) {
         input.state.setMode("insert")
         input.textarea().insertText(autocomplete)
@@ -1630,7 +1630,7 @@ export function createVimHandler(input: {
       countedMotion(() => moveVertical("down"))
       // A no-op arrow key falls through to the host so opencode can use it
       // (e.g. subagent navigation). j always consumes.
-      if (key === "down" && input.textarea().cursorOffset === before) return false
+      if (key === "down" && !input.state.isVisual() && input.textarea().cursorOffset === before) return false
       event.preventDefault()
       return true
     }
@@ -1658,7 +1658,7 @@ export function createVimHandler(input: {
       countedMotion(() => moveVertical("up"))
       // A no-op arrow key falls through to the host so opencode can use it
       // (e.g. subagent navigation). k always consumes.
-      if (key === "up" && input.textarea().cursorOffset === before) return false
+      if (key === "up" && !input.state.isVisual() && input.textarea().cursorOffset === before) return false
       event.preventDefault()
       return true
     }

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process"
 import type { Context, KeymapCommand } from "@opencode/plugin/tui/context"
-import { RGBA, type TextareaRenderable } from "@opentui/core"
+import { RGBA, type KeyEvent, type TextareaRenderable } from "@opentui/core"
 import { createVimHandler, type VimEvent } from "./vim/handler"
 import { useVimIndicator } from "./vim/indicator"
 import { createVimState, type VimMode, type VimRegister } from "./vim/state"
@@ -26,6 +26,7 @@ type TextareaLike = TextareaRenderable & {
 }
 
 const COMMAND_PALETTE = "command.palette.show"
+const COMMAND_KEY = "ocv-plugin.key"
 const YANK_FLASH_MS = 70
 // Clipboard tools answer in single-digit milliseconds when they work; a short
 // timeout only caps the stall when they don't (spawnSync blocks the render loop).
@@ -48,53 +49,19 @@ function isTextareaLike(value: unknown): value is TextareaLike {
 }
 
 const shiftedSymbols: Record<string, string> = {
-  "1": "!",
-  "2": "@",
-  "3": "#",
-  "4": "$",
-  "5": "%",
-  "6": "^",
-  "7": "&",
-  "8": "*",
-  "9": "(",
-  "0": ")",
-  "-": "_",
-  "=": "+",
-  "[": "{",
-  "]": "}",
-  "\\": "|",
-  ";": ":",
-  "'": '"',
-  ",": "<",
-  ".": ">",
-  "/": "?",
-  "`": "~",
+  "1": "!", "2": "@", "3": "#", "4": "$", "5": "%", "6": "^", "7": "&", "8": "*", "9": "(", "0": ")",
+  "-": "_", "=": "+", "[": "{", "]": "}", "\\": "|", ";": ":", "'": '"', ",": "<", ".": ">", "/": "?", "`": "~",
 }
 
-// The keymap engine never passes a KeyEvent to plugin command run functions
-// (empirically: run is called with no arguments), so each command rebuilds the
-// vim event from the bind string it was registered with. The engine only
-// dispatches when the pressed key matches the bind, so this is lossless.
-function synthesizeVimEvent(bind: string): VimEvent {
-  const parts = bind.split("+")
-  const name = parts[parts.length - 1]
-  const mods = parts.slice(0, -1)
-  const shift = mods.includes("shift")
-  let typed = name
-  if (name.length === 1 && shift) {
-    typed = shiftedSymbols[name] ?? (/[a-z]/.test(name) ? name.toUpperCase() : name)
-  }
-  const event: VimEvent = {
-    name,
-    sequence: typed,
-    raw: typed,
-    preventDefault: () => {},
-  }
-  if (shift) event.shift = true
-  if (mods.includes("ctrl") || mods.includes("control")) event.ctrl = true
-  if (mods.includes("meta")) event.meta = true
-  if (mods.includes("super")) event.super = true
-  return event
+function vimEvent(event: KeyEvent): VimEvent {
+  if (hasModifier(event)) return event
+  const typed = event.sequence?.length === 1 ? event.sequence : event.raw?.length === 1 ? event.raw : undefined
+  const shifted = event.shift ? shiftedSymbols[event.name] : undefined
+  const text = shifted && typed === event.name
+    ? shifted
+    : typed && typed.charCodeAt(0) > 32 && typed.charCodeAt(0) !== 127 ? typed : shifted
+  if (!text) return event
+  return { ...event, name: text, sequence: text, preventDefault: () => event.preventDefault() }
 }
 
 function hasModifier(event: { ctrl?: boolean; meta?: boolean; super?: boolean }) {
@@ -141,9 +108,6 @@ function clipboardWrite(text: string): "ok" | "missing" | "failed" {
   return result.status === 0 ? "ok" : "failed"
 }
 
-// OpenCode v2 splits bind strings on commas, so a literal comma key cannot be
-// bound. Insert-mode commas fall through to the editor's own handler; the
-// normal-mode repeat-find on "," is lost (documented v2 limitation).
 const normalKeys: string[] = [
   "escape",
   "return",
@@ -652,11 +616,8 @@ export function createPromptVim(
       if (action === "top") context.keymap.dispatch("session.first")
       if (action === "bottom") context.keymap.dispatch("session.last")
     },
-    // The plugin has no copy-mode search or prompt autocomplete, so both are
-    // disabled: "/" and "?" are consumed as no-ops and "/" and "@" never
-    // insert (see the dispatch at the bottom of handler.ts handleKey).
     copySearchStart: () => false,
-    autocomplete: () => false,
+    autocomplete: (trigger) => trigger,
     langmap: input.langmap,
     vimEscapeSequence: input.vimEscapeSequence,
   })
@@ -687,12 +648,10 @@ export function createPromptVim(
     state,
   })
 
-  // One inline keymap command per vim key. Returning false continues dispatch
-  // to the host's own bindings; returning void consumes the key.
-  function runVimKey(bind: string) {
+  function runVimKey(event: KeyEvent) {
     const editor = promptEditor()
     if (!editor) return false
-    const keyEvent = synthesizeVimEvent(bind)
+    const keyEvent = vimEvent(event)
     if ((state.isInsert() || state.isReplace()) && keyEvent.name === "return" && !hasModifier(keyEvent)) {
       if (input.enterSubmit) submitPrompt()
       else {
@@ -707,19 +666,27 @@ export function createPromptVim(
     if (!handled) return false
   }
 
-  const vimCommands: KeymapCommand[] = unique([
+  function onComma(event: KeyEvent) {
+    if (event.name !== "," || hasModifier(event)) return
+    if (runVimKey(event) === false) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  context.renderer.keyInput.prependListener("keypress", onComma)
+
+  const keys = unique([
     ...normalKeys,
     ...insertPrintableKeys,
-    ...Object.keys(input.langmap?.() ?? {}),
-  ])
-    // A literal comma cannot appear in a v2 bind string (comma separator).
-    .filter((key) => !key.includes(","))
-    .map((key) => ({
-      bind: key,
-      run: () => runVimKey(key),
-    }))
+    ...Object.keys(input.langmap?.() ?? {}).map((key) => key === " " ? "space" : key),
+  ]).filter((key) => !key.includes(","))
+  const vimCommands: KeymapCommand[] = [{
+    id: COMMAND_KEY,
+    bind: keys.join(","),
+    run: (_input, event) => event ? runVimKey(event) : false,
+  }]
 
   function dispose() {
+    context.renderer.keyInput.off("keypress", onComma)
     handler.cancelPending()
     state.cancelEdit()
     for (const timer of pasteLayoutTimers) clearTimeout(timer)

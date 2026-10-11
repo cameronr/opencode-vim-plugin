@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { InternalKeyHandler, KeyEvent, parseKeypress } from "@opentui/core"
 import { RendererContext } from "@opentui/solid"
 import { createComponent, createRoot } from "solid-js"
 
@@ -21,14 +22,7 @@ function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message)
 }
 
-// Mirrors the host v2 default binding parser's accept/reject rules so the
-// harness catches unbindable keys the plugin mistakenly emits. A bind is a
-// comma-separated list of entries; each entry may carry <token> aliases and
-// {patterns}, then one key (a single char, a named key, or an f-key) with
-// optional leading modifiers. A lone < (no >) or { (no }) is the literal key,
-// since the parser only treats <...>/{...} as a token/pattern when closed. It
-// throws on empty comma entries, a trailing modifier with no key, multiple key
-// names, and keys that are neither a char, named key, nor f-key.
+// Match the host's binding syntax, including comma-separated alternatives.
 const NAMED_KEYS = new Set([
   "up",
   "down",
@@ -169,7 +163,7 @@ function parseKeyEntry(entry: string) {
   }
   if (!name) throw new Error(`Invalid key "${entry}": missing key name`)
   const lower = name.toLowerCase()
-  if (name.length !== 1 && !NAMED_KEYS.has(lower) && !/^f\d{1,2}$/.test(lower)) {
+  if (name.length !== 1 && !NAMED_KEYS.has(lower) && !/^f\d{1,2}$/.test(lower) && !/^[a-zA-Z0-9]+$/.test(name)) {
     throw new Error(`Invalid key "${entry}": unknown key "${name}"`)
   }
 }
@@ -282,7 +276,7 @@ function fakeContext(options: unknown) {
     options,
     location: undefined,
     app: { version: "test", channel: "test" },
-    renderer: { currentFocusedEditor: null, requestRender() {} },
+    renderer: { currentFocusedEditor: null, keyInput: new InternalKeyHandler(), requestRender() {} },
     client: {},
     data: {},
     attention: { notify: async () => ({ ok: true, notification: false, sound: false }) },
@@ -358,17 +352,72 @@ async function setup(options: unknown = { initial_mode: "normal" }) {
   return { context, layers, slots, dispatched, toasts, cleanup }
 }
 
-// Finds the inline vim key command for a bind and runs it. The host engine
-// calls run with no arguments, so the command rebuilds its event from the
-// bind. Returning false means the key fell through to the host; anything else
-// consumed it.
 function vimKey(layers: any[], bind: string) {
   const command = layers
     .filter((layer) => layer.mode === "base" && layer.priority === 100)
     .flatMap((layer) => layer.commands ?? [])
-    .find((command: any) => command.bind === bind)
+    .find((command: any) => command.bind?.split(",").includes(bind))
   assert(command, `vim key command for "${bind}" was not registered`)
-  return (_event?: any) => command.run()
+  return (event?: any) => {
+    const parts = bind === "+" ? [bind] : bind.split("+")
+    const name = parts.at(-1)!
+    const shift = parts.includes("shift")
+    const symbols: Record<string, string> = { "1": "!", "2": "@", "3": "#", "4": "$", "5": "%", "6": "^", "7": "&", "8": "*", "9": "(", "0": ")", "-": "_", "=": "+", "[": "{", "]": "}", "\\": "|", ";": ":", "'": '"', ",": "<", ".": ">", "/": "?", "`": "~" }
+    const typed = shift ? (symbols[name] ?? (name.length === 1 ? name.toUpperCase() : name)) : name
+    const key = event ?? { ...fakeEvent(name, { shift, sequence: typed }), ctrl: parts.includes("ctrl"), meta: parts.includes("meta"), super: parts.includes("super") }
+    return command.run(undefined, key)
+  }
+}
+
+{
+  const { context, layers, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  editor.plainText = "abc"
+  context.renderer.currentFocusedEditor = editor
+  vimKey(layers, "shift+r")()
+  vimKey(layers, "z")({ ...fakeEvent("я"), baseCode: 122, source: "kitty" })
+  assert(editor.plainText === "яbc", "base-layout fallback must preserve the actual typed character in replace mode")
+  await cleanup?.()
+}
+
+for (const [name, symbol] of [["1", "!"], ["=", "+"], ["`", "~"]]) {
+  const { context, layers, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  editor.plainText = "abc"
+  context.renderer.currentFocusedEditor = editor
+  vimKey(layers, "r")()
+  const raw = `\x1b[${name.charCodeAt(0)};2u`
+  const parsed = parseKeypress(raw, { useKittyKeyboard: true })
+  assert(parsed?.shift && parsed.sequence === name, "Kitty parsing should expose the unshifted printable sequence")
+  vimKey(layers, `shift+${name}`)(new KeyEvent(parsed))
+  assert(editor.plainText === symbol + "bc", "parsed Kitty events should retain shifted punctuation")
+  editor.plainText = "abc"
+  editor.cursorOffset = 0
+  vimKey(layers, "r")()
+  vimKey(layers, "shift+1")({ ...fakeEvent("1", { shift: true, sequence: "é" }), source: "kitty" })
+  assert(editor.plainText === "ébc", "an actual non-US character should take precedence over shifted-symbol fallback")
+  await cleanup?.()
+}
+
+{
+  const { context, layers, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  editor.plainText = "(x)"
+  context.renderer.currentFocusedEditor = editor
+  const parsed = parseKeypress("\x1b[53;2u", { useKittyKeyboard: true })
+  assert(parsed?.shift && parsed.sequence === "5", "Kitty Shift+5 should parse as an unshifted 5")
+  vimKey(layers, "shift+5")(new KeyEvent(parsed))
+  assert(editor.cursorOffset === 2, "parsed Kitty Shift+5 should perform % bracket matching")
+  await cleanup?.()
+}
+
+for (const options of [{ initial_mode: "insert" }, { initial_mode: "normal", enabled: false }]) {
+  const { context, layers, cleanup } = await setup({ ...options, normal_keybinds: { gg: "session.first" } })
+  context.renderer.currentFocusedEditor = fakeTextarea()
+  const layer = layers.find((item) => item.priority === 200)
+  assert(layer, "normal-only sequence layer should register")
+  assert(layer.enabled?.() === false, "normal-only prefixes must be disabled before matching insert or disabled-Vim input")
+  await cleanup?.()
 }
 
 {
@@ -376,6 +425,7 @@ function vimKey(layers: any[], bind: string) {
     initial_mode: "normal",
     normal_keybinds: {
       "<leader>s": "session.list",
+      "x,y": "session.list",
       y: "messages_line_up",
       u: "messages_undo",
       r: "messages_redo",
@@ -391,11 +441,13 @@ function vimKey(layers: any[], bind: string) {
   assert(normalLayer.mode === "base", "normal keybind layer should be base-mode only")
   const byBind = (bind: string) => normalLayer.commands.find((command: any) => command.bind === bind)
   assert(byBind("<leader>s"), "leader bindings should keep the host <leader> token")
+  assert(byBind("x,y"), "comma-separated alternative bindings should be passed to the host")
   assert(byBind("y").run() === false, "normal keybinds should fall through without a focused prompt")
   assert(dispatched.length === 0, "normal keybinds should not dispatch without a focused prompt")
   context.renderer.currentFocusedEditor = fakeTextarea()
   for (const [bind, command] of Object.entries({
     "<leader>s": "session.list",
+    "x,y": "session.list",
     y: "session.line.up",
     u: "session.undo",
     r: "session.redo",
@@ -408,6 +460,28 @@ function vimKey(layers: any[], bind: string) {
     dispatched.length = 0
     byBind(bind).run()
     assert(dispatched.at(-1) === command, `OCV-style command alias ${command} was not resolved for ${bind}`)
+  }
+}
+
+for (const bind of [",", " , ", "ctrl+,", "ctrl+, ", "x,,y", "x, ,y"]) {
+  const { layers, context, dispatched, toasts } = await setup({
+    initial_mode: "normal",
+    normal_keybinds: {
+      [bind]: "session.list",
+      j: "session.line.down",
+      "x,y": "session.list",
+    },
+  })
+  const normalLayer = layers.find((layer) => layer.priority === 200)
+  assert(normalLayer, `skipping "${bind}" should preserve valid normal bindings`)
+  assert(!normalLayer.commands.some((command: any) => command.bind === bind), `"${bind}" should be skipped`)
+  assert(!toasts.some((toast) => toast.variant === "error"), `"${bind}" should not cause layer registration to fail`)
+  assert(toasts.some((toast) => toast.variant === "warning"), `skipping "${bind}" should show a warning`)
+  context.renderer.currentFocusedEditor = fakeTextarea()
+  for (const [validBind, command] of Object.entries({ j: "session.line.down", "x,y": "session.list" })) {
+    dispatched.length = 0
+    normalLayer.commands.find((item: any) => item.bind === validBind).run()
+    assert(dispatched.at(-1) === command, `"${validBind}" should still dispatch after skipping "${bind}"`)
   }
 }
 
@@ -448,8 +522,8 @@ function vimKey(layers: any[], bind: string) {
 {
   const { layers, context, dispatched, cleanup, slots } = await setup()
   const commandLayer = layers.find((layer) => layer.commands?.some((command: any) => command.id === "ocv-plugin.toggle"))
-  assert(commandLayer?.mode === undefined, "vim palette commands should remain reachable while autocomplete is open")
-  const vimLayer = layers.find((layer) => layer.priority === 100 && layer.commands?.some((command: any) => command.bind === "h"))
+  assert(commandLayer?.mode === "global", "vim palette commands must explicitly remain global while autocomplete is open")
+  const vimLayer = layers.find((layer) => layer.priority === 100 && layer.commands?.some((command: any) => command.bind?.split(",").includes("h")))
   assert(vimLayer?.mode === "base", "vim key bindings should be inactive while autocomplete is open")
   const toggle = commandLayer?.commands.find((command: any) => command.id === "ocv-plugin.toggle")
   assert(toggle?.slash?.name === "vim", "toggle command should expose /vim")
@@ -513,16 +587,35 @@ function vimKey(layers: any[], bind: string) {
   assert(editor.plainText === "word" && editor.cursorOffset === 4, "an invalid d: should not leave a pending delete")
   assert(dispatched.length === paletteDispatches, "an operator-pending : should not open the command palette")
 
+  editor.plainText = "abc"
+  editor.cursorOffset = 0
+  vimKey(layers, "r")()
+  vimKey(layers, "shift+1")()
+  assert(editor.plainText === "!bc", "r with Shift+1 should replace with !, not 1")
+  editor.plainText = "(x)"
+  editor.cursorOffset = 0
+  vimKey(layers, "shift+5")()
+  assert(editor.cursorOffset === 2, "Shift+5 should match brackets as %")
+  editor.plainText = "abc"
+  editor.cursorOffset = 0
+  vimKey(layers, "shift+`")()
+  assert(editor.plainText === "Abc", "shifted backtick should toggle case as ~")
+  vimKey(layers, "shift+r")()
+  vimKey(layers, "+")()
+  assert(editor.plainText === "A+c", "literal + should work in replace mode")
+  vimKey(layers, "escape")()
+
   editor.plainText = ""
   editor.cursorOffset = 0
 
   const handled = vimKey(layers, "/")()
   assert(handled !== false, "empty slash should be handled")
-  assert(
-    editor.plainText === "",
-    "slash should be a no-op in normal mode when the plugin reports no autocomplete list (autocomplete: () => false)",
-  )
+  assert(editor.plainText === "/", "slash should enter insert mode and start host autocomplete")
   assert(editor.render !== originalRender, "focused prompt render should be patched for block cursor drawing")
+  vimKey(layers, "escape")()
+  editor.clear()
+  assert(vimKey(layers, "@")() !== false, "empty @ should be handled")
+  assert(editor.plainText === "@", "@ should enter insert mode and start host autocomplete")
   vimKey(layers, "escape")()
   const originalInsertText = editor.insertText
   vimKey(layers, "i")()
@@ -539,6 +632,58 @@ function vimKey(layers: any[], bind: string) {
   assert(editor.submit === originalSubmit, "prompt patching should leave submit unchanged")
   assert(editor.onPaste === originalPaste, "prompt cleanup should restore patched paste")
   assert(editor.insertText === originalInsertText, "prompt cleanup should restore repeat recorder methods")
+}
+
+{
+  const { layers, context, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  context.renderer.currentFocusedEditor = editor
+  const keyInput = context.renderer.keyInput as InternalKeyHandler
+  keyInput.onInternal("keypress", (event) => editor.insertText(event.shift ? "<" : ","))
+  const comma = (shift = false) => {
+    const event = new KeyEvent({
+      name: ",", sequence: ",", raw: shift ? "\x1b[44;2u" : ",", ctrl: false, meta: false, shift,
+      option: false, number: false, eventType: "press", source: shift ? "kitty" : "raw",
+    })
+    keyInput.emit("keypress", event)
+    return event
+  }
+  editor.plainText = "abc"
+  assert(comma().defaultPrevented && editor.plainText === "abc", "normal comma should not reach native insertion")
+  assert(comma(true).defaultPrevented && editor.plainText === "abc", "normal shifted comma should not reach native insertion")
+  vimKey(layers, "r")()
+  assert(comma(true).defaultPrevented && editor.plainText === "<bc", "r followed by shifted comma should replace with <")
+  editor.plainText = "a<bc>"
+  editor.cursorOffset = 2
+  vimKey(layers, "d")()
+  vimKey(layers, "i")()
+  assert(comma(true).defaultPrevented && editor.plainText === "a<>", "di followed by shifted comma should resolve the angle-bracket object")
+  editor.plainText = "abc"
+  editor.cursorOffset = 0
+  vimKey(layers, "r")()
+  comma()
+  assert(editor.plainText === ",bc", "r, should replace rather than insert")
+  editor.plainText = "a,b,c"
+  editor.cursorOffset = 0
+  vimKey(layers, "f")()
+  comma()
+  assert(editor.cursorOffset === 1, "f, should find the comma")
+  vimKey(layers, ";")()
+  comma()
+  assert(editor.cursorOffset === 1, "comma should repeat find in reverse")
+  vimKey(layers, "i")()
+  const beforeInsert = editor.plainText
+  assert(!comma().defaultPrevented && editor.plainText.length === beforeInsert.length + 1, "insert comma should use native insertion once")
+  assert(!comma(true).defaultPrevented && editor.plainText.length === beforeInsert.length + 2, "insert shifted comma should use native insertion once")
+  vimKey(layers, "escape")()
+  context.keymap.mode.current = () => "autocomplete"
+  assert(!comma().defaultPrevented && !comma(true).defaultPrevented, "comma and shifted comma should fall through outside the host base mode")
+  context.keymap.mode.current = () => "base"
+  const toggle = layers.flatMap((layer) => layer.commands ?? []).find((command: any) => command.id === "ocv-plugin.toggle")
+  toggle.run()
+  assert(!comma().defaultPrevented && !comma(true).defaultPrevented, "disabled Vim should leave comma and shifted comma to the host")
+  await cleanup?.()
+  assert(keyInput.listenerCount("keypress") === 0, "cleanup should remove the comma interceptor")
 }
 
 {
@@ -769,10 +914,10 @@ function vimKey(layers: any[], bind: string) {
 
 {
   const plugin = ((await import("../dist/tui.js" as string)) as any).default
-  const { context, layers, toasts } = fakeContext({ toggle_key: "ctrl+", normal_leader: "space", normal_keybinds: { "<broken": "session.list" } })
+  const { context, layers, toasts } = fakeContext({ toggle_key: "ctrl+", normal_leader: "space", normal_keybinds: { "ctrl+": "session.list" } })
   await plugin.setup(context)
   assert(
-    layers.some((layer) => layer.commands?.some((command: any) => command.bind === "h")),
+    layers.some((layer) => layer.commands?.some((command: any) => command.bind?.split(",").includes("h"))),
     "invalid user keybind config should not prevent core vim bindings from registering",
   )
   assert(

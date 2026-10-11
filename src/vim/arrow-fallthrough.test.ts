@@ -54,7 +54,7 @@ async function setup(text: string, offset = 0, width = 60) {
   return { textarea, handler }
 }
 
-describe("arrow keys in normal mode", () => {
+describe("arrow key fallthrough", () => {
   test("down falls through when the cursor cannot move (single line)", async () => {
     const { handler } = await setup("single line")
     expect(handler.handleKey(makeEvent("down"))).toBe(false)
@@ -75,6 +75,15 @@ describe("arrow keys in normal mode", () => {
     const { textarea, handler } = await setup("a\nb", 2)
     expect(handler.handleKey(makeEvent("up"))).toBe(true)
     expect(textarea.cursorOffset).toBe(0)
+  })
+
+  test("boundary arrows remain consumed in visual modes", async () => {
+    for (const mode of ["v", "V"]) {
+      const { handler } = await setup("single line")
+      expect(handler.handleKey(makeEvent(mode))).toBe(true)
+      expect(handler.handleKey(makeEvent("down"))).toBe(true)
+      expect(handler.handleKey(makeEvent("up"))).toBe(true)
+    }
   })
 
   test("j/k keep moving the cursor and never fall through", async () => {

@@ -23,7 +23,6 @@
     "access": "public"
   },
   "exports": {
-    ".": "./dist/tui.js",
     "./tui": "./dist/tui.js"
   },
   "files": [

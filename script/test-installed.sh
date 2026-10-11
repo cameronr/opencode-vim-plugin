@@ -36,6 +36,12 @@ if [[ "$GLOBAL_CONFIG_DIR" != "$TEST_CONFIG_DIR" && -d "$GLOBAL_CONFIG_DIR" ]]; 
   shopt -u dotglob nullglob
 fi
 
+for name in cli.json cli.jsonc; do
+  if [[ -L "$TEST_CONFIG_DIR/$name" ]]; then
+    rm -- "$TEST_CONFIG_DIR/$name"
+  fi
+done
+
 cat > "$TEST_CONFIG_DIR/cli.json" <<JSON
 {
   "plugins": [
@@ -58,12 +64,10 @@ This workspace loads the local OpenCode Vim Plugin build from the repo `dist/`
 directory and runs OpenCode v2 with a private (`--standalone`) server, so the
 test never touches the background service or the live session data.
 
-Run from this directory:
-
-```bash
-bash script/test-installed.sh
-```
+Run the repository harness to rebuild and relaunch this workspace:
 MD
+printf '\n```bash\nOCV_PLUGIN_TEST_DIR=%q OCV_PLUGIN_TEST_CONFIG_HOME=%q OPENCODE_BIN=%q bash %q\n```\n' \
+  "$TEST_DIR" "$TEST_CONFIG_HOME" "$OPENCODE_BIN" "$PLUGIN_DIR/script/test-installed.sh" >> "$TEST_DIR/README.md"
 
 printf 'Test workspace: %s\n' "$TEST_DIR"
 printf 'Plugin entry:   %s\n' "$PLUGIN_ENTRY"

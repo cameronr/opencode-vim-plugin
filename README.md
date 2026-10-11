@@ -17,7 +17,7 @@ opencode plugin add @leohenon/opencode-vim-plugin
 ```
 
 > [!IMPORTANT]
-> Requires OpenCode v2 (`0.0.0-beta-18743` or newer).
+> Requires OpenCode 2.0.25 or newer.
 
 ## Usage
 
@@ -33,7 +33,7 @@ Toggle via command palette > `Toggle vim mode` or slash command `/vim`.
 | Line / buffer                  | `0`, `^`, `_`, `$`, `gg`, `G`                                                                           |
 | Display line                   | `gj`, `gk`, `g<Down>`, `g<Up>`, `g0`, `g^`, `g$`                                                        |
 | Matching / paragraph           | `%`, `{`, `}`                                                                                           |
-| Find / till                    | `f`, `F`, `t`, `T`, `;`                                                                                 |
+| Find / till                    | `f`, `F`, `t`, `T`, `;`, `,`                                                                            |
 | Scroll                         | `Ctrl+e`, `Ctrl+y`, `Ctrl+d`, `Ctrl+u`, `Ctrl+f`, `Ctrl+b`                                              |
 | Insert / replace               | `i`, `I`, `a`, `A`, `o`, `O`, `R`                                                                       |
 | Character / line edit          | `r`, `x`, `~`, `s`, `S`, `J`, `C`, `D`, `dd`, `cc`                                                      |
@@ -67,7 +67,7 @@ Numeric count prefixes are supported for motions and common operators.
 > As text objects, `p` is a blank-line-separated paragraph and `l` is the whole prompt buffer, matching nvim 0.13's `al`/`il`.
 
 > [!NOTE]
-> OpenCode v2 keymap binds are strings where commas separate multiple keys, so the literal `,` key has no bind string. The reverse repeat-find `,` is unavailable in v2. The same-direction repeat `;` and the `<` / `>` bracket objects still work.
+> OpenCode v2 uses commas to separate alternative keybinds. Literal comma custom keybinds are unsupported; the plugin still handles Vim's `,` key.
 
 ## Configuration
 
@@ -343,7 +343,7 @@ bun install
 bun run check
 ```
 
-Launch a local installed OpenCode v2 test workspace (uses `opencode2`; set `OPENCODE_BIN` to point elsewhere):
+Launch a local installed OpenCode v2 test workspace (uses `opencode`; set `OPENCODE_BIN` to point elsewhere):
 
 ```bash
 ./script/test-installed.sh
