@@ -4,6 +4,7 @@ import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
 import { createRoot } from "solid-js"
 import { createVimHandler, type VimEvent } from "./handler"
 import { createVimState } from "./state"
+import { paragraphTextObjectOperation } from "./motions"
 
 const renderers: TestRenderer[] = []
 const disposers: Array<() => void> = []
@@ -135,6 +136,108 @@ describe("any quote text objects", () => {
 describe("paragraph text objects", () => {
   const text = "X\n\nA\nB\n\nC"
 
+  test("paragraph objects stop at whitespace-only separators", async () => {
+    for (const separator of [" ", "\t", " \t "]) {
+      const result = paragraphTextObjectOperation(
+        { plainText: `A\n${separator}\nB`, cursorOffset: 0 } as TextareaRenderable,
+        false,
+        "d",
+      )
+      expect(result.span).toEqual({ start: 0, end: 2 })
+      expect(result.register).toEqual({ text: "A\n", linewise: true })
+    }
+    const { textarea, press } = await setup("A\n \nB")
+    for (const key of "dip") press(key)
+    expect(textarea.plainText).toBe(" \nB")
+  })
+
+  for (const [keys, offset, expected, register] of [
+    ["d2ap", 0, "C", "A\n\nB\n\n"],
+    ["2dap", 0, "C", "A\n\nB\n\n"],
+    ["d3ap", 0, "", "A\n\nB\n\nC\n"],
+    ["2yap", 0, "A\n\nB\n\nC", "A\n\nB\n\n"],
+    ["2dip", 0, "B\n\nC", "A\n\n"],
+    ["d2ip", 0, "B\n\nC", "A\n\n"],
+    ["d3ip", 0, "\nC", "A\n\nB\n"],
+    ["d2ip", 2, "A\n\nC", "\nB\n"],
+    ["d2ap", 2, "A", "\nB\n\nC\n"],
+  ] as const) {
+    test(`${keys} selects counted paragraph objects from offset ${offset}`, async () => {
+      const { textarea, state, press } = await setup("A\n\nB\n\nC", offset)
+      for (const key of keys) press(key)
+      expect(textarea.plainText).toBe(expected)
+      expect(state.register()).toEqual({ text: register, linewise: true })
+    })
+  }
+
+  for (const [original, object, deleted, changed, register] of [
+    ["X\n\nA\n ", "ap", "X\n", "X\n\nZ", "A\n \n"],
+    ["A\n\nB\n\nC", "2ap", "A", "A\nZ", "\nB\n\nC\n"],
+    ["A\n\nB\n", "2ip", "A\n", "A\n\nZ", "B\n\n"],
+  ] as const) {
+    for (const operation of ["d", "c", "y"]) {
+      test(`${operation}${object} handles EOF in ${JSON.stringify(original)}`, async () => {
+        const { textarea, state, press } = await setup(original, 3)
+        for (const key of operation + object) press(key)
+        expect(state.register()).toEqual({ text: register, linewise: true })
+        if (operation === "c") {
+          textarea.insertText("Z")
+          press("escape")
+        }
+        const expected = operation === "y" ? original : operation === "c" ? changed : deleted
+        expect(textarea.plainText).toBe(expected)
+        if (operation !== "y") {
+          press("u")
+          expect(textarea.plainText).toBe(original)
+          press(".")
+          expect(textarea.plainText).toBe(expected)
+        }
+      })
+    }
+  }
+
+  test("an unavailable paragraph count leaves the prompt and register alone", async () => {
+    for (const [original, keys, offset] of [
+      ["A\n\nB\n\nC", "d4ap", 0],
+      ["A\n\nB\n", "d3ip", 3],
+    ] as const) {
+      const { textarea, state, press } = await setup(original, offset)
+      for (const key of keys) press(key)
+      expect(textarea.plainText).toBe(original)
+      expect(state.register()).toBeNull()
+    }
+  })
+
+  test("counted paragraph changes preserve whitespace, undo, and repeat", async () => {
+    const original = "A\n \nB\n  \nC"
+    const { textarea, state, press } = await setup(original)
+    for (const key of "c2ap") press(key)
+    expect(state.register()).toEqual({ text: "A\n \nB\n  \n", linewise: true })
+    textarea.insertText("Z")
+    press("escape")
+    expect(textarea.plainText).toBe("Z\nC")
+    press("u")
+    expect(textarea.plainText).toBe(original)
+    press(".")
+    expect(textarea.plainText).toBe("Z\nC")
+  })
+
+  test("cip enters insert mode on an empty prompt without inventing a register", async () => {
+    const { textarea, state, press } = await setup("")
+    press("c")
+    press("i")
+    press("p")
+    expect(state.mode()).toBe("insert")
+    expect(state.register()).toBeNull()
+    textarea.insertText("Z")
+    press("escape")
+    expect(textarea.plainText).toBe("Z")
+    press("u")
+    expect(textarea.plainText).toBe("")
+    press(".")
+    expect(textarea.plainText).toBe("Z")
+  })
+
   test("dap removes the block and the blank lines after it", async () => {
     const { textarea, press } = await setup(text, 3)
     press("d")
@@ -151,12 +254,43 @@ describe("paragraph text objects", () => {
     expect(textarea.plainText).toBe("X\n\n\nC")
   })
 
-  test("dap targets the next block when the cursor is on a blank line", async () => {
-    const { textarea, press } = await setup(text, 2)
-    press("d")
-    press("a")
-    press("p")
-    expect(textarea.plainText).toBe("X\n\nC")
+  for (const [scope, expected, register] of [
+    ["a", "X\n\nZ\nC", "A\nB\n\n"],
+    ["i", "X\n\nZ\n\nC", "A\nB\n"],
+  ]) {
+    test(`c${scope}p preserves the replacement line and full register`, async () => {
+      const { textarea, state, press } = await setup(text, 3)
+      press("c")
+      press(scope)
+      press("p")
+      expect(state.register()).toEqual({ text: register, linewise: true })
+      textarea.insertText("Z")
+      press("escape")
+      expect(textarea.plainText).toBe(expected)
+      press("u")
+      expect(textarea.plainText).toBe(text)
+      press(".")
+      expect(textarea.plainText).toBe(expected)
+    })
+  }
+
+  test("paragraph objects select the current blank separator", async () => {
+    for (const scope of ["i", "a"]) {
+      for (const operation of ["d", "c", "y"]) {
+        const { textarea, state, press } = await setup(text, 2)
+        press(operation)
+        press(scope)
+        press("p")
+        expect(state.register()).toEqual({ text: scope === "i" ? "\n" : "\nA\nB\n", linewise: true })
+        if (operation === "c") {
+          textarea.insertText("Z")
+          press("escape")
+          expect(textarea.plainText).toBe(scope === "i" ? "X\nZ\nA\nB\n\nC" : "X\nZ\n\nC")
+        } else {
+          expect(textarea.plainText).toBe(operation === "y" ? text : scope === "i" ? "X\nA\nB\n\nC" : "X\n\nC")
+        }
+      }
+    }
   })
 
   test("dip deletes the whole block when the cursor is on a middle line", async () => {
@@ -173,6 +307,107 @@ describe("paragraph text objects", () => {
     press("a")
     press("p")
     expect(textarea.plainText).toBe("X\n\nC")
+  })
+
+  for (const offset of [3, 5]) {
+    test(`dip deletes the EOF paragraph linewise from offset ${offset}`, async () => {
+      const original = "X\n\nA\nB"
+      const { textarea, state, press } = await setup(original, offset)
+      press("d")
+      press("i")
+      press("p")
+      expect(textarea.plainText).toBe("X\n")
+      expect(state.register()).toEqual({ text: "A\nB\n", linewise: true })
+      press("u")
+      expect(textarea.plainText).toBe(original)
+      press(".")
+      expect(textarea.plainText).toBe("X\n")
+    })
+  }
+
+  for (const operation of ["c", "y"]) {
+    test(`${operation}ip keeps the preceding separator at EOF`, async () => {
+      const original = "X\n\nA\nB"
+      const { textarea, state, press } = await setup(original, 3)
+      press(operation)
+      press("i")
+      press("p")
+      expect(state.register()).toEqual({ text: "A\nB\n", linewise: true })
+      if (operation === "c") {
+        textarea.insertText("Z")
+        press("escape")
+        expect(textarea.plainText).toBe("X\n\nZ")
+      } else {
+        expect(textarea.plainText).toBe(original)
+      }
+    })
+  }
+
+  test("cip Escape preserves the empty replacement line at EOF", async () => {
+    const { textarea, state, press } = await setup("X\n\nA\nB", 3)
+    press("c")
+    press("i")
+    press("p")
+    press("escape")
+    expect(textarea.plainText).toBe("X\n\n")
+    expect(state.register()).toEqual({ text: "A\nB\n", linewise: true })
+  })
+
+  test("dip keeps the trailing empty line after an EOF paragraph", async () => {
+    const { textarea, state, press } = await setup("X\n\nA\nB\n", 3)
+    press("d")
+    press("i")
+    press("p")
+    expect(textarea.plainText).toBe("X\n\n")
+    expect(state.register()).toEqual({ text: "A\nB\n", linewise: true })
+  })
+
+  for (const operation of ["d", "c", "y"]) {
+    test(`${operation}ap includes the preceding separator when the paragraph ends at EOF`, async () => {
+      const original = "X\n\nA\nB"
+      const { textarea, state, press } = await setup(original, 3)
+      press(operation)
+      press("a")
+      press("p")
+      expect(state.register()).toEqual({ text: "\nA\nB\n", linewise: true })
+      if (operation === "c") {
+        textarea.insertText("Z")
+        press("escape")
+        expect(textarea.plainText).toBe("X\nZ")
+      } else {
+        expect(textarea.plainText).toBe(operation === "d" ? "X" : original)
+      }
+    })
+  }
+
+  test("inner objects register a terminal empty line exactly once", async () => {
+    for (const original of ["A\nB\n", "X\n"]) {
+      for (const operation of ["d", "c", "y"]) {
+        const { state, press } = await setup(original, original.length)
+        press(operation)
+        press("i")
+        press("p")
+        expect(state.register()).toEqual({ text: "\n", linewise: true })
+      }
+    }
+  })
+
+  test("around paragraph includes the final empty line at EOF", async () => {
+    const original = "X\n\nA\nB\n"
+    for (const operation of ["d", "c", "y"]) {
+      const { textarea, state, press } = await setup(original, 3)
+      press(operation)
+      press("a")
+      press("p")
+      expect(state.register()).toEqual({ text: "A\nB\n\n", linewise: true })
+      if (operation === "c") {
+        textarea.insertText("Z")
+        press("escape")
+        expect(textarea.plainText).toBe("X\n\nZ")
+      } else {
+        expect(textarea.plainText).toBe(operation === "d" ? "X\n" : original)
+      }
+    }
   })
 
   test("dap removes a single-paragraph buffer", async () => {
@@ -275,6 +510,23 @@ describe("whole buffer text objects", () => {
     press("l")
     expect(textarea.plainText).toBe("A\nB")
     expect(state.register()).toEqual({ text: "A\nB\n", linewise: true })
+  })
+
+  test("whole-buffer registers preserve a final empty line when pasted", async () => {
+    for (const scope of ["i", "a"]) {
+      for (const operation of ["y", "d", "c"]) {
+        const { textarea, state, press } = await setup("A\n", 0)
+        press(operation)
+        press(scope)
+        press("l")
+        expect(state.register()).toEqual({ text: "A\n\n", linewise: true })
+        if (operation === "c") press("escape")
+        textarea.setText("X")
+        textarea.cursorOffset = 0
+        press("p")
+        expect(textarea.plainText).toBe("X\nA\n")
+      }
+    }
   })
 
   test("cal deletes the buffer and enters insert mode", async () => {

@@ -211,7 +211,7 @@ export function createVimHandler(input: {
   let pendingOperatorCount = 1
   let pendingOperatorFind: { operation: VimOperator; find: VimFindOperator } | undefined
   let pendingOperatorDisplay: VimOperator | undefined
-  let pendingTextObject: { operation: VimOperator; scope: VimTextObjectScope } | undefined
+  let pendingTextObject: { operation: VimOperator; scope: VimTextObjectScope; count: number } | undefined
 
   // Two-key escape sequence support (e.g., "jk" to escape insert mode)
   const escapeSeq = input.vimEscapeSequence
@@ -867,8 +867,8 @@ export function createVimHandler(input: {
 
   function startTextObject(event: VimEvent, operation: VimOperator, scope: VimTextObjectScope) {
     const display = (input.state.pendingDisplay() || operation) + (scope === "around" ? "a" : "i")
-    takeOperatorCount()
-    pendingTextObject = { operation, scope }
+    const count = takeOperatorCount()
+    pendingTextObject = { operation, scope, count }
     input.state.setPending(operation, display)
     event.preventDefault()
     return true
@@ -880,7 +880,7 @@ export function createVimHandler(input: {
     return false
   }
 
-  function resolveTextObject(event: VimEvent, key: string, scope: VimTextObjectScope, operation: VimOperator) {
+  function resolveTextObject(event: VimEvent, key: string, scope: VimTextObjectScope, operation: VimOperator, count: number) {
     if ((key === "w" || isShifted(event, "w")) && !hasModifier(event)) {
       const big = isShifted(event, "w")
       return () => wordTextObjectOperation(input.textarea(), scope === "around", big)
@@ -895,7 +895,7 @@ export function createVimHandler(input: {
       return () => bracketTextObjectOperation(input.textarea(), scope === "around", key, operation)
     }
     if (key === "p" && !event.shift && !hasModifier(event)) {
-      return () => paragraphTextObjectOperation(input.textarea(), scope === "around")
+      return () => paragraphTextObjectOperation(input.textarea(), scope === "around", operation, count)
     }
     if (key === "l" && !event.shift && !hasModifier(event)) {
       return () => bufferTextObjectOperation(input.textarea())
@@ -910,7 +910,7 @@ export function createVimHandler(input: {
     }
 
     const textObject = pendingTextObject
-    const operation = resolveTextObject(event, key, textObject.scope, textObject.operation)
+    const operation = resolveTextObject(event, key, textObject.scope, textObject.operation, textObject.count)
     pendingTextObject = undefined
     if (operation) {
       pendingOperatorCount = 1

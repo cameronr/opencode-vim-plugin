@@ -467,18 +467,18 @@ export function previousParagraphOperation(
   return buildOperatorResult(text, end > target ? { start: target, end } : null, null, true)
 }
 
-// A paragraph is a run of non-blank lines. A cursor on a blank line targets
-// the next paragraph, so a blank line is never part of a paragraph span. A
-// cursor inside a block targets the whole block, so the search walks back
-// to the block's first line as well as forward past blank lines.
+function isParagraphSeparator(text: string, start: number) {
+  return /^[ \t]*$/.test(text.slice(start, lineEnd(text, start)))
+}
+
 function paragraphBlockFirstLine(text: string, cursor: number): number | null {
   let probe = lineStart(text, cursor)
-  while (isBlankLine(text, probe)) {
+  while (isParagraphSeparator(text, probe)) {
     const end = lineEnd(text, probe)
     if (end >= text.length) return null
     probe = end + 1
   }
-  while (probe > 0 && !isBlankLine(text, lineStart(text, probe - 1))) {
+  while (probe > 0 && !isParagraphSeparator(text, lineStart(text, probe - 1))) {
     probe = lineStart(text, probe - 1)
   }
   return probe
@@ -489,37 +489,81 @@ function paragraphBlockLastLine(text: string, first: number): number {
   for (;;) {
     const end = lineEnd(text, last)
     if (end >= text.length) return last
-    if (isBlankLine(text, end + 1)) return last
+    if (isParagraphSeparator(text, end + 1)) return last
     last = end + 1
   }
 }
 
-// Around appends every blank line that follows the block, matching nvim's
-// dap; blank lines above the block are kept.
-export function paragraphTextObjectOperation(textarea: TextareaRenderable, around: boolean): VimOperatorResult {
-  const text = textarea.plainText
-  if (!text.length) return { span: null, register: null }
+// ap includes trailing separators; ip can select a separator on its own.
+function paragraphTextObjectRange(text: string, cursor: number, around: boolean) {
+  const cursorLine = lineStart(text, cursor)
+  const onBlank = isParagraphSeparator(text, cursorLine)
+  const first = onBlank && !around ? cursorLine : paragraphBlockFirstLine(text, cursor)
+  if (first === null) return null
 
-  const first = paragraphBlockFirstLine(text, textarea.cursorOffset)
-  if (first === null) return { span: null, register: null }
-
-  const last = paragraphBlockLastLine(text, first)
+  const last = onBlank && !around ? cursorLine : paragraphBlockLastLine(text, first)
   const lastEnd = lineEnd(text, last)
-  const after = lastEnd >= text.length ? text.length : lastEnd + 1
+  let end = lastEnd >= text.length ? text.length : lastEnd + 1
+  const includeBlankTail = around !== onBlank
+  if (includeBlankTail) {
+    while (end < text.length && isParagraphSeparator(text, end)) end = Math.min(lineEnd(text, end) + 1, text.length)
+  }
 
-  let end = after
-  while (around && end < text.length && text[end] === "\n") end = lineEnd(text, end) + 1
+  let start = onBlank ? cursorLine : first
+  if (onBlank) {
+    while (start > 0) {
+      const previous = lineStart(text, start - 1)
+      if (!isParagraphSeparator(text, previous)) break
+      start = previous
+    }
+  }
+  const trailingBlank = includeBlankTail && end === text.length && text[end - 1] === "\n"
+  return { start, end, trailingBlank }
+}
 
-  // The register is the operation span, like every other text object, so a
-  // linewise paste reproduces what around yanked or deleted.
-  return buildOperatorResult(text, { start: first, end }, null, true)
+export function paragraphTextObjectOperation(
+  textarea: TextareaRenderable,
+  around: boolean,
+  operation: VimOperator,
+  count = 1,
+): VimOperatorResult {
+  const text = textarea.plainText
+  if (!text.length) return { span: !around && operation === "c" && count === 1 ? { start: 0, end: 0 } : null, register: null }
+
+  let range = paragraphTextObjectRange(text, textarea.cursorOffset, around)
+  if (!range) return { span: null, register: null }
+  for (let index = 1; index < count; index++) {
+    // The empty line after a final newline is a separate ip target.
+    const terminalEmptyLine = !around && !range.trailingBlank && range.end === text.length && text.endsWith("\n")
+    if (range.end >= text.length && !terminalEmptyLine) return { span: null, register: null }
+    const next = paragraphTextObjectRange(text, range.end, around)
+    if (!next || next.end <= range.end && !terminalEmptyLine) return { span: null, register: null }
+    range = { ...next, start: range.start }
+  }
+
+  const { end, trailingBlank } = range
+  let start = range.start
+  // Apply EOF fallback to the whole selection.
+  if (around && end === text.length && !isParagraphSeparator(text, lineStart(text, end))) {
+    while (start > 0) {
+      const previous = lineStart(text, start - 1)
+      if (!isParagraphSeparator(text, previous)) break
+      start = previous
+    }
+  }
+  const registerSpan = { start, end }
+  const deleteStart = operation === "d" && start > 0 && end === text.length && (text[end - 1] !== "\n" || trailingBlank) ? start - 1 : start
+  const changeEnd = operation === "c" && text[end - 1] === "\n" && !trailingBlank ? end - 1 : end
+  const result = buildOperatorResult(text, { start: deleteStart, end: changeEnd }, registerSpan, true)
+  if (trailingBlank && end > start && result.register) result.register.text += "\n"
+  return result
 }
 
 // The whole buffer is a single extent; inside and around are the same span.
 export function bufferTextObjectOperation(textarea: TextareaRenderable): VimOperatorResult {
   const text = textarea.plainText
   if (!text.length) return { span: null, register: null }
-  return buildOperatorResult(text, { start: 0, end: text.length }, null, true)
+  return { span: { start: 0, end: text.length }, register: { text: text + "\n", linewise: true } }
 }
 
 function isWord(char: string) {
