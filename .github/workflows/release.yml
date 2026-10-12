@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Set up npm trusted publishing
+        run: npm install --global npm@11
+
+      - name: Validate release version
+        id: metadata
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync, readFileSync } from "node:fs";
+          const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+          const match = pkg.version.match(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/);
+          if (!match || match[4]?.split(".").some((part) => /^0\d+$/.test(part))) {
+            throw new Error(`Invalid release version: ${pkg.version}`);
+          }
+          const tag = `v${pkg.version}`;
+          if (process.env.GITHUB_REF_NAME !== tag) {
+            throw new Error(`Tag ${process.env.GITHUB_REF_NAME} does not match package version ${pkg.version}`);
+          }
+          const prerelease = Boolean(match[4]);
+          const outputs = {
+            name: pkg.name,
+            version: pkg.version,
+            tag,
+            channel: prerelease ? "beta" : "latest",
+            prerelease,
+            opencode: pkg.engines.opencode,
+          };
+          appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(outputs).map(([key, value]) => `${key}=${value}\n`).join(""));
+          JS
+
+      - run: bun install --frozen-lockfile
+
+      - name: Check whether this version is already published
+        id: npm
+        env:
+          PACKAGE_NAME: ${{ steps.metadata.outputs.name }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          npm view "$PACKAGE_NAME" versions --json > "$RUNNER_TEMP/npm-versions.json"
+          node --input-type=module <<'JS'
+          import { appendFileSync, readFileSync } from "node:fs";
+          const versions = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/npm-versions.json`, "utf8"));
+          if (!Array.isArray(versions)) throw new Error("Unexpected npm versions response");
+          appendFileSync(process.env.GITHUB_OUTPUT, `published=${versions.includes(process.env.VERSION)}\n`);
+          JS
+
+      - name: Publish to npm
+        if: steps.npm.outputs.published != 'true'
+        env:
+          DIST_TAG: ${{ steps.metadata.outputs.channel }}
+        run: |
+          if [[ "$DIST_TAG" == "beta" ]]; then
+            npm publish --access public --tag beta
+          else
+            npm publish --access public
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+          PACKAGE_NAME: ${{ steps.metadata.outputs.name }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          DIST_TAG: ${{ steps.metadata.outputs.channel }}
+          PRERELEASE: ${{ steps.metadata.outputs.prerelease }}
+          OPENCODE: ${{ steps.metadata.outputs.opencode }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "GitHub release $RELEASE_TAG already exists."
+            exit 0
+          fi
+          printf 'npm package: `%s@%s`\n\nRequires OpenCode `%s`.\n\nnpm channel: `%s`.\n' \
+            "$PACKAGE_NAME" "$VERSION" "$OPENCODE" "$DIST_TAG" > "$RUNNER_TEMP/release-notes.md"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$RELEASE_TAG" > "$RUNNER_TEMP/generated-notes.json"
+          node --input-type=module <<'JS'
+          import { appendFileSync, readFileSync } from "node:fs";
+          const notes = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/generated-notes.json`, "utf8"));
+          const body = notes.body.replace(/(?:^|\n)## New Contributors\n[\s\S]*?(?=\n(?:## |\*\*Full Changelog\*\*)|$)/, "").trim();
+          appendFileSync(`${process.env.RUNNER_TEMP}/release-notes.md`, `\n${body}\n`);
+          JS
+          args=("$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md")
+          if [[ "$PRERELEASE" == "true" ]]; then
+            args+=(--prerelease --latest=false)
+          else
+            latest_version="$(npm view "$PACKAGE_NAME" dist-tags.latest --prefer-online)"
+            if [[ "$latest_version" == "$VERSION" ]]; then
+              args+=(--latest)
+            else
+              args+=(--latest=false)
+            fi
+          fi
+          gh release create "${args[@]}"
