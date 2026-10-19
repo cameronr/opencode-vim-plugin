@@ -10,14 +10,14 @@ Adds Vim editing to the OpenCode prompt, including motions, operators, text obje
 
 > [!NOTE]
 > `main` targets OpenCode v2. For OpenCode v1, use plugin version `0.1.6`; maintenance fixes belong on the `v1` branch.
-> V2 prereleases will be published to npm under `@beta`.
+> Use npm’s `@beta` channel for v2 prereleases.
 
 ## Installation
 
 Install globally:
 
 ```bash
-opencode plugin add @leohenon/opencode-vim-plugin
+opencode plugin add @leohenon/opencode-vim-plugin@beta
 ```
 
 > [!IMPORTANT]
@@ -81,7 +81,7 @@ Configure the plugin in `cli.json`, OpenCode v2's TUI configuration file:
 {
   "plugins": [
     {
-      "package": "@leohenon/opencode-vim-plugin",
+      "package": "@leohenon/opencode-vim-plugin@beta",
       "options": {
         "enabled": true,
         "toggle_key": "ctrl+shift+v",
@@ -125,7 +125,7 @@ Vim mode starts in insert mode by default. To start in normal mode instead, use:
 {
   "plugins": [
     {
-      "package": "@leohenon/opencode-vim-plugin",
+      "package": "@leohenon/opencode-vim-plugin@beta",
       "options": {
         "enabled": true,
         "vim_initial_mode": "normal"
@@ -143,7 +143,7 @@ Bind existing OpenCode commands only in Vim normal mode:
 {
   "plugins": [
     {
-      "package": "@leohenon/opencode-vim-plugin",
+      "package": "@leohenon/opencode-vim-plugin@beta",
       "options": {
         "normal_keybinds": {
           "<leader>s": "session.list",
@@ -184,7 +184,7 @@ Nested normal-mode keybind configuration is also accepted inside the plugin opti
 {
   "plugins": [
     {
-      "package": "@leohenon/opencode-vim-plugin",
+      "package": "@leohenon/opencode-vim-plugin@beta",
       "options": {
         "keybinds": {
           "vim.normal": {
@@ -209,7 +209,7 @@ To submit from insert mode too:
 {
   "plugins": [
     {
-      "package": "@leohenon/opencode-vim-plugin",
+      "package": "@leohenon/opencode-vim-plugin@beta",
       "options": {
         "vim_enter_submit": true
       }
@@ -224,7 +224,7 @@ To always default to insert mode after a prompt submission:
 {
   "plugins": [
     {
-      "package": "@leohenon/opencode-vim-plugin",
+      "package": "@leohenon/opencode-vim-plugin@beta",
       "options": {
         "vim_insert_after_submit": true
       }
@@ -263,7 +263,7 @@ Use the system clipboard as Vim's register:
 {
   "plugins": [
     {
-      "package": "@leohenon/opencode-vim-plugin",
+      "package": "@leohenon/opencode-vim-plugin@beta",
       "options": {
         "vim_system_clipboard_register": true
       }
@@ -287,7 +287,7 @@ Map non-English keyboard layout characters to Vim command keys.
 {
   "plugins": [
     {
-      "package": "@leohenon/opencode-vim-plugin",
+      "package": "@leohenon/opencode-vim-plugin@beta",
       "options": {
         "vim_langmap": {
           "р": "h",
@@ -307,7 +307,7 @@ Or for simple aliases:
 {
   "plugins": [
     {
-      "package": "@leohenon/opencode-vim-plugin",
+      "package": "@leohenon/opencode-vim-plugin@beta",
       "options": {
         "vim_langmap": {
           "H": "^",
@@ -327,7 +327,7 @@ Set a two-character sequence to leave insert mode without pressing Escape:
 {
   "plugins": [
     {
-      "package": "@leohenon/opencode-vim-plugin",
+      "package": "@leohenon/opencode-vim-plugin@beta",
       "options": {
         "vim_escape_sequence": "jk"
       }
