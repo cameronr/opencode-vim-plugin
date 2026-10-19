@@ -8,6 +8,10 @@ Adds Vim editing to the OpenCode prompt, including motions, operators, text obje
 
 </div>
 
+> [!NOTE]
+> `main` targets OpenCode v2. For OpenCode v1, use plugin version `0.1.6`; maintenance fixes belong on the `v1` branch.
+> V2 prereleases will be published to npm under `@beta`.
+
 ## Installation
 
 Install globally:
