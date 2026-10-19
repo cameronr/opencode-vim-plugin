@@ -2,26 +2,23 @@
 
 # OpenCode Vim Plugin
 
-[![npm version](https://img.shields.io/npm/v/@leohenon/opencode-vim-plugin?style=flat-square&logo=npm&logoColor=white&color=007ec6)](https://www.npmjs.com/package/@leohenon/opencode-vim-plugin) [![Website](https://img.shields.io/badge/website-opencode--vim-7fa6a3?style=flat-square)](https://leohenon.github.io/opencode-vim/)
+[![OpenCode v1](https://img.shields.io/badge/OpenCode%20v1-v0.1.6-007ec6?style=flat-square&logo=npm&logoColor=white)](https://github.com/leohenon/opencode-vim-plugin/tree/v1#installation) [![OpenCode v2](https://img.shields.io/npm/v/@leohenon/opencode-vim-plugin/beta?label=OpenCode%20v2&style=flat-square&logo=npm&logoColor=white&color=007ec6)](https://www.npmjs.com/package/@leohenon/opencode-vim-plugin?activeTab=versions) [![Website](https://img.shields.io/badge/website-opencode--vim-7fa6a3?style=flat-square)](https://leohenon.github.io/opencode-vim/)
 
 Adds Vim editing to the OpenCode prompt, including motions, operators, text objects, registers, visual mode, counts, undo/redo, and dot repeat.
 
 </div>
 
 > [!NOTE]
-> `main` targets OpenCode v2. For OpenCode v1, use plugin version `0.1.6`; maintenance fixes belong on the `v1` branch.
+> `main` targets OpenCode v2. For OpenCode v1, use plugin version `0.1.6`; see the [v1 installation instructions](https://github.com/leohenon/opencode-vim-plugin/tree/v1#installation). Maintenance fixes belong on the `v1` branch.
 > Use npm’s `@beta` channel for v2 prereleases.
 
 ## Installation
 
-Install globally:
+For OpenCode 2.0.25 or newer:
 
 ```bash
 opencode plugin add @leohenon/opencode-vim-plugin@beta
 ```
-
-> [!IMPORTANT]
-> Requires OpenCode 2.0.25 or newer.
 
 ## Usage
 
