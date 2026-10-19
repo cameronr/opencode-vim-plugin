@@ -1,17 +1,18 @@
 /** @jsxImportSource @opentui/solid */
 
-import type { KeyEvent, Renderable, TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
-import { TextAttributes } from "@opentui/core"
-import type { Binding, KeyLike } from "@opentui/keymap"
-import { createEffect, createSignal, Show, type Accessor } from "solid-js"
+import { Plugin } from "@opencode/plugin/tui"
+import type { Context } from "@opencode/plugin/tui/context"
+import { TextAttributes, type TextRenderable } from "@opentui/core"
+import { createEffect, createRoot, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 import { createPromptVim } from "./prompt-vim"
-
 const PLUGIN_ID = "ocv-plugin"
 const COMMAND_TOGGLE = "ocv-plugin.toggle"
-const KV_ENABLED = "ocv-plugin.enabled"
-const NORMAL_LEADER_TOKEN = "ocv-plugin-leader"
+const COMMAND_QUIT = "ocv-plugin.quit"
+const COMMAND_EXIT = "app.exit"
+// Distinct from the v1 key: v1 persisted a bare boolean, v2 persists an object.
+const KV_ENABLED = "ocv-plugin.enabled.v2"
 
-type NormalBinding = Binding<Renderable, KeyEvent> & { cmd: string }
+type NormalBinding = { bind: string; cmd: string }
 type InitialMode = "normal" | "insert"
 
 type Options = {
@@ -40,7 +41,7 @@ function readInitialMode(value: unknown): InitialMode | undefined {
   return value === "normal" || value === "insert" ? value : undefined
 }
 
-// Mirrors OpenCode TUI's CommandMap for OCV-style keybind compatibility.
+// Mirrors OpenCode v2's command IDs for OCV-style keybind compatibility.
 const COMMAND_ALIASES: Record<string, string> = {
   app_exit: "app.exit",
   app_debug: "app.debug",
@@ -213,50 +214,48 @@ function commandName(value: string) {
   return COMMAND_ALIASES[value] ?? (value.includes(".") ? value : value.replaceAll("_", "."))
 }
 
-function normalBindingKey(key: KeyLike, normalLeader: string | undefined): KeyLike {
-  if (!normalLeader || typeof key !== "string") return key
-  return key.replaceAll("<leader>", `<${NORMAL_LEADER_TOKEN}>`)
+// v2 bind strings are plain strings; object-form keys from v1 configs are
+// flattened to modifier+name.
+function keyToBind(key: unknown): string | undefined {
+  if (typeof key === "string") return key.trim() ? key : undefined
+  if (!isRecord(key)) return undefined
+  const name = nonEmptyString(key.name)
+  if (!name) return undefined
+  const mods = (["ctrl", "meta", "shift", "option", "super"] as const).filter((mod) => key[mod] === true)
+  return [...mods, name].join("+")
 }
 
-function bindingFromValue(command: string, value: unknown, normalLeader: string | undefined): NormalBinding[] {
-  const key = nonEmptyString(value)
-  if (key) return key === "none" ? [] : [{ key: normalBindingKey(key, normalLeader), cmd: command }]
+function hasEmptyCommaEntry(bind: string) {
+  return bind.split(",").some((entry) => entry.trim() === "")
+}
+
+function bindingFromValue(command: string, value: unknown): NormalBinding[] {
+  const bind = keyToBind(value)
+  if (bind) return bind === "none" ? [] : [{ bind, cmd: command }]
   if (!Array.isArray(value)) {
     if (!isRecord(value)) return []
-    const itemKey = nonEmptyString(value.key)
-    if (!itemKey || itemKey === "none") return []
-    return [
-      {
-        key: normalBindingKey(itemKey, normalLeader),
-        cmd: command,
-        ...(typeof value.preventDefault === "boolean" ? { preventDefault: value.preventDefault } : {}),
-        ...(typeof value.desc === "string" ? { desc: value.desc } : {}),
-      },
-    ]
+    const itemBind = keyToBind(value.key)
+    if (!itemBind || itemBind === "none") return []
+    return [{ bind: itemBind, cmd: command }]
   }
-  return value.flatMap((item) => bindingFromValue(command, item, normalLeader))
+  return value.flatMap((item) => bindingFromValue(command, item))
 }
 
-function readNormalBindings(options: Record<string, unknown>, normalLeader: string | undefined) {
+function readNormalBindings(options: Record<string, unknown>) {
   const direct = isRecord(options.normal_keybinds)
     ? Object.entries(options.normal_keybinds).flatMap(([key, value]) => {
-        if (typeof value === "string") return [{ key: normalBindingKey(key, normalLeader), cmd: commandName(value) }]
+        const bind = keyToBind(key)
+        if (!bind || bind === "none") return []
+        if (typeof value === "string") return [{ bind, cmd: commandName(value) }]
         if (!isRecord(value)) return []
         const command = nonEmptyString(value.command) ?? nonEmptyString(value.cmd)
         if (!command) return []
-        return [
-          {
-            key: normalBindingKey(key, normalLeader),
-            cmd: commandName(command),
-            ...(typeof value.preventDefault === "boolean" ? { preventDefault: value.preventDefault } : {}),
-            ...(typeof value.desc === "string" ? { desc: value.desc } : {}),
-          },
-        ]
+        return [{ bind, cmd: commandName(command) }]
       })
     : []
   const keybinds = isRecord(options.keybinds) && isRecord(options.keybinds["vim.normal"]) ? options.keybinds["vim.normal"] : undefined
   const scoped = keybinds
-    ? Object.entries(keybinds).flatMap(([name, value]) => (name === "leader" ? [] : bindingFromValue(commandName(name), value, normalLeader)))
+    ? Object.entries(keybinds).flatMap(([name, value]) => (name === "leader" ? [] : bindingFromValue(commandName(name), value)))
     : []
   return [...direct, ...scoped]
 }
@@ -294,164 +293,248 @@ function readOptions(input: unknown): Options {
     langmap,
     vimEscapeSequence,
     normalLeader,
-    normalBindings: readNormalBindings(options, normalLeader),
+    normalBindings: readNormalBindings(options),
   }
 }
 
 function Status(props: {
   indicator: Accessor<string | undefined>
-  pending: Accessor<string>
-  isVisual: Accessor<boolean>
   showIndicator: boolean
-  applyCursorStyle: () => void
-  api: TuiPluginApi
+  theme: Context["theme"]
+  onText: (text: TextRenderable) => () => void
 }) {
-  createEffect(() => {
-    props.indicator()
-    props.pending()
-    props.isVisual()
-    props.applyCursorStyle()
-  })
-
+  // The host renders this slot tree once and caches it, and never runs
+  // Solid effects or re-reads reactive props inside plugin trees. The text
+  // element is therefore persistent: its initial content is set here, and
+  // setup's syncIndicator rewrites content/attributes imperatively.
+  let releaseText: (() => void) | undefined
+  onCleanup(() => releaseText?.())
   if (!props.showIndicator) return null
 
   return (
-    <Show when={props.indicator()}>
-      {(indicator) => (
-        <box paddingLeft={1} flexShrink={0}>
-          <text fg={props.api.theme.current.textMuted} attributes={props.pending() || props.isVisual() ? TextAttributes.BOLD : undefined}>
-            {indicator()}
-          </text>
-        </box>
-      )}
-    </Show>
+    <box paddingLeft={1} flexShrink={0}>
+      <text
+        fg={props.theme.text.muted}
+        ref={(text: TextRenderable | null) => {
+          releaseText?.()
+          releaseText = text ? props.onText(text) : undefined
+        }}
+      >
+        {props.indicator() ?? ""}
+      </text>
+    </box>
   )
 }
 
-const tui: TuiPlugin = async (api, rawOptions) => {
-  const options = readOptions(rawOptions)
-  const initialEnabled = api.kv.get(KV_ENABLED, options.enabled)
-  const [enabled, setEnabled] = createSignal(initialEnabled)
-  const prompt = createPromptVim(api, {
-    enabled,
-    initialMode: initialEnabled ? (options.initialMode ?? "insert") : "insert",
-    enterSubmit: options.enterSubmit,
-    insertAfterSubmit: options.insertAfterSubmit,
-    systemClipboardRegister: options.systemClipboardRegister,
-    langmap: () => options.langmap,
-    vimEscapeSequence: options.vimEscapeSequence,
-  })
-  api.lifecycle.onDispose(prompt.dispose)
+function GlobalCommands(props: { context: Context; toggle: () => void }) {
+  const { context, toggle } = props
+  context.keymap.layer(() => ({
+    mode: "global",
+    commands: [
+      {
+        id: COMMAND_TOGGLE,
+        title: "Toggle vim mode",
+        group: "Plugin",
+        palette: true,
+        slash: { name: "vim" },
+        run: () => toggle(),
+      },
+      {
+        id: COMMAND_QUIT,
+        title: "Quit",
+        group: "System",
+        palette: true,
+        run: () => context.keymap.dispatch(COMMAND_EXIT),
+      },
+    ],
+  }))
+  return null
+}
 
-  function toggle() {
-    prompt.cancelPending()
-    const next = !enabled()
-    api.kv.set(KV_ENABLED, next)
-    setEnabled(next)
-    if (next) prompt.setMode("normal")
-    prompt.applyCursorStyle()
-    api.ui.toast({
-      variant: next ? "success" : "info",
-      message: next ? "Vim mode enabled" : "Vim mode disabled",
-    })
-  }
-
-  // User-provided keybind config should degrade to a toast instead of failing the plugin load.
-  function registerUserKeybinds(option: string, register: () => void) {
+function KeymapSetup(props: {
+  context: Context
+  options: Options
+  prompt: ReturnType<typeof createPromptVim>
+  toggle: () => void
+}) {
+  const { context, options, prompt, toggle } = props
+  onMount(prompt.applyCursorStyle)
+  context.keymap.layer(() => ({
+    mode: "base",
+    priority: 100,
+    commands: prompt.vimCommands,
+  }))
+  if (options.toggleKey) {
     try {
-      register()
+      context.keymap.layer(() => ({
+        mode: "base",
+        priority: 100,
+        commands: [{ bind: options.toggleKey!, run: () => toggle() }],
+      }))
     } catch (error) {
-      api.ui.toast({
+      context.ui.toast.show({
         variant: "error",
-        message: `Vim plugin: invalid ${option}: ${error instanceof Error ? error.message : String(error)}`,
+        message: `Vim plugin: invalid toggle_key: ${error instanceof Error ? error.message : String(error)}`,
       })
     }
   }
-
-  if (options.normalLeader && options.normalBindings.length > 0) {
-    registerUserKeybinds("normal_leader", () => {
-      api.keymap.registerToken({ name: NORMAL_LEADER_TOKEN, key: options.normalLeader! })
-    })
-  }
-
-  api.keymap.registerLayer({
-    commands: [
-      {
-        name: COMMAND_TOGGLE,
-        title: "Toggle vim mode",
-        category: "Plugin",
-        namespace: "palette",
-        slashName: "vim",
-        run() {
-          toggle()
-          api.ui.dialog.clear()
-        },
-      },
-      ...prompt.commands,
-    ],
-  })
-
-  api.keymap.registerLayer({
-    mode: "base",
-    priority: 100,
-    bindings: prompt.bindings,
-  })
-
-  if (options.toggleKey) {
-    registerUserKeybinds("toggle_key", () => {
-      api.keymap.registerLayer({
-        mode: "base",
-        priority: 100,
-        bindings: [{ key: options.toggleKey!, cmd: COMMAND_TOGGLE, desc: "Toggle vim mode" }],
-      })
-    })
-  }
-
-  if (options.normalBindings.length > 0) {
-    registerUserKeybinds("normal_keybinds", () => {
-      api.keymap.registerLayer({
+  const normalBindings = options.normalBindings.filter((binding) => !hasEmptyCommaEntry(binding.bind))
+  if (normalBindings.length > 0) {
+    try {
+      context.keymap.layer(() => ({
         mode: "base",
         priority: 200,
         enabled: () => prompt.active() && prompt.mode() === "normal",
-        bindings: options.normalBindings,
+        commands: normalBindings.map((binding) => ({
+          bind: binding.bind,
+          run: () => {
+            if (!prompt.active() || prompt.mode() !== "normal") return false
+            context.keymap.dispatch(binding.cmd)
+          },
+        })),
+      }))
+    } catch (error) {
+      context.ui.toast.show({
+        variant: "error",
+        message: `Vim plugin: invalid normal_keybinds: ${error instanceof Error ? error.message : String(error)}`,
       })
-    })
+    }
   }
-
-  api.slots.register({
-    order: 100,
-    slots: {
-      home_prompt_right() {
-        return (
-          <Status
-            indicator={prompt.indicator}
-            pending={prompt.pending}
-            isVisual={prompt.isVisual}
-            showIndicator={options.indicator}
-            applyCursorStyle={prompt.applyCursorStyle}
-            api={api}
-          />
-        )
-      },
-      session_prompt_right() {
-        return (
-          <Status
-            indicator={prompt.indicator}
-            pending={prompt.pending}
-            isVisual={prompt.isVisual}
-            showIndicator={options.indicator}
-            applyCursorStyle={prompt.applyCursorStyle}
-            api={api}
-          />
-        )
-      },
-    },
-  })
+  return null
 }
 
-const plugin: TuiPluginModule & { id: string } = {
+const plugin = Plugin.define({
   id: PLUGIN_ID,
-  tui,
-}
+  setup(context) {
+    const options = readOptions(context.options)
+    const [enabledStore, setEnabledStore] = context.storage.store(KV_ENABLED, { initial: { enabled: options.enabled } })
+    const [enabled, setEnabled] = createSignal(enabledStore.enabled)
+    let enabledWrites = 0
+    let enabledWrite = Promise.resolve()
+    let disposed = false
+    const prompt = createPromptVim(context, {
+      enabled,
+      initialMode: enabled() ? (options.initialMode ?? "insert") : "insert",
+      enterSubmit: options.enterSubmit,
+      insertAfterSubmit: options.insertAfterSubmit,
+      systemClipboardRegister: options.systemClipboardRegister,
+      langmap: () => options.langmap,
+      vimEscapeSequence: options.vimEscapeSequence,
+    })
+
+    function syncEnabledStore() {
+      const stored = enabledStore.enabled
+      const current = enabled()
+      if (disposed || enabledWrites || current === stored) return
+      setEnabled(stored)
+      prompt.applyCursorStyle()
+    }
+    const disposeEnabledSync = createRoot((dispose) => {
+      createEffect(syncEnabledStore)
+      return dispose
+    })
+
+    function toggle() {
+      prompt.cancelPending()
+      const next = !enabled()
+      enabledWrites++
+      setEnabled(next)
+      const write = enabledWrite.catch(() => {}).then(() =>
+        setEnabledStore((draft) => {
+          draft.enabled = next
+        }),
+      )
+      enabledWrite = write
+      void write.then(
+        () => {
+          enabledWrites--
+          syncEnabledStore()
+        },
+        () => {
+          enabledWrites--
+          syncEnabledStore()
+          if (!disposed) context.ui.toast.show({ variant: "error", message: "Failed to save Vim mode state" })
+        },
+      )
+      if (next) prompt.setMode("normal")
+      prompt.applyCursorStyle()
+      context.ui.toast.show({
+        variant: next ? "success" : "info",
+        message: next ? "Vim mode enabled" : "Vim mode disabled",
+      })
+    }
+
+    if (options.normalBindings.some((binding) => hasEmptyCommaEntry(binding.bind))) {
+      context.ui.toast.show({
+        variant: "warning",
+        message: "Vim plugin: literal comma keys and empty comma-separated keybind entries are not supported in OpenCode v2 and were skipped",
+      })
+    }
+    if (options.normalLeader) {
+      context.ui.toast.show({
+        variant: "warning",
+        message: "Vim plugin: normal_leader is not supported in OpenCode v2; configure the host 'leader' keybind instead",
+      })
+    }
+
+    // The host renders the slot tree once and caches it, and does not run
+    // Solid effects or re-read reactive props inside plugin trees, so the
+    // indicator is updated imperatively: every mode change (vim key, toggle,
+    // editor change, submit) runs through prompt.setStyleSync, which
+    // rewrites the text element below and requests a frame.
+    const indicatorTexts = new Map<TextRenderable, { content?: string; attrs?: number }>()
+    const syncIndicator = () => {
+      const content = prompt.indicator() ?? ""
+      const mode = prompt.mode()
+      const attrs = prompt.pending() || mode === "visual" || mode === "visual-line" ? TextAttributes.BOLD : 0
+      let changed = false
+      for (const [text, previous] of indicatorTexts) {
+        if (content === previous.content && attrs === previous.attrs) continue
+        previous.content = content
+        previous.attrs = attrs
+        text.content = content
+        text.attributes = attrs
+        text.fg = context.theme.text.muted
+        changed = true
+      }
+      if (changed) context.renderer.requestRender()
+    }
+    prompt.setStyleSync(syncIndicator)
+
+    // Keep editing bindings scoped to the prompt.
+    const releaseStatusSlot = context.ui.slot({
+      append: "prompt.footer.status",
+      render: () => (
+        <>
+          <KeymapSetup context={context} options={options} prompt={prompt} toggle={toggle} />
+          <Status
+            indicator={prompt.indicator}
+            showIndicator={options.indicator}
+            theme={context.theme}
+            onText={(text) => {
+              indicatorTexts.set(text, {})
+              syncIndicator()
+              return () => indicatorTexts.delete(text)
+            }}
+          />
+        </>
+      ),
+    })
+
+    const releaseCommandsSlot = context.ui.slot({
+      append: "app",
+      render: () => <GlobalCommands context={context} toggle={toggle} />,
+    })
+
+    return () => {
+      disposed = true
+      disposeEnabledSync()
+      releaseCommandsSlot()
+      releaseStatusSlot()
+      indicatorTexts.clear()
+      prompt.dispose()
+    }
+  },
+})
 
 export default plugin

@@ -467,6 +467,105 @@ export function previousParagraphOperation(
   return buildOperatorResult(text, end > target ? { start: target, end } : null, null, true)
 }
 
+function isParagraphSeparator(text: string, start: number) {
+  return /^[ \t]*$/.test(text.slice(start, lineEnd(text, start)))
+}
+
+function paragraphBlockFirstLine(text: string, cursor: number): number | null {
+  let probe = lineStart(text, cursor)
+  while (isParagraphSeparator(text, probe)) {
+    const end = lineEnd(text, probe)
+    if (end >= text.length) return null
+    probe = end + 1
+  }
+  while (probe > 0 && !isParagraphSeparator(text, lineStart(text, probe - 1))) {
+    probe = lineStart(text, probe - 1)
+  }
+  return probe
+}
+
+function paragraphBlockLastLine(text: string, first: number): number {
+  let last = first
+  for (;;) {
+    const end = lineEnd(text, last)
+    if (end >= text.length) return last
+    if (isParagraphSeparator(text, end + 1)) return last
+    last = end + 1
+  }
+}
+
+// ap includes trailing separators; ip can select a separator on its own.
+function paragraphTextObjectRange(text: string, cursor: number, around: boolean) {
+  const cursorLine = lineStart(text, cursor)
+  const onBlank = isParagraphSeparator(text, cursorLine)
+  const first = onBlank && !around ? cursorLine : paragraphBlockFirstLine(text, cursor)
+  if (first === null) return null
+
+  const last = onBlank && !around ? cursorLine : paragraphBlockLastLine(text, first)
+  const lastEnd = lineEnd(text, last)
+  let end = lastEnd >= text.length ? text.length : lastEnd + 1
+  const includeBlankTail = around !== onBlank
+  if (includeBlankTail) {
+    while (end < text.length && isParagraphSeparator(text, end)) end = Math.min(lineEnd(text, end) + 1, text.length)
+  }
+
+  let start = onBlank ? cursorLine : first
+  if (onBlank) {
+    while (start > 0) {
+      const previous = lineStart(text, start - 1)
+      if (!isParagraphSeparator(text, previous)) break
+      start = previous
+    }
+  }
+  const trailingBlank = includeBlankTail && end === text.length && text[end - 1] === "\n"
+  return { start, end, trailingBlank }
+}
+
+export function paragraphTextObjectOperation(
+  textarea: TextareaRenderable,
+  around: boolean,
+  operation: VimOperator,
+  count = 1,
+): VimOperatorResult {
+  const text = textarea.plainText
+  if (!text.length) return { span: !around && operation === "c" && count === 1 ? { start: 0, end: 0 } : null, register: null }
+
+  let range = paragraphTextObjectRange(text, textarea.cursorOffset, around)
+  if (!range) return { span: null, register: null }
+  for (let index = 1; index < count; index++) {
+    // The empty line after a final newline is a separate ip target.
+    const terminalEmptyLine = !around && !range.trailingBlank && range.end === text.length && text.endsWith("\n")
+    if (range.end >= text.length && !terminalEmptyLine) return { span: null, register: null }
+    const next = paragraphTextObjectRange(text, range.end, around)
+    if (!next || next.end <= range.end && !terminalEmptyLine) return { span: null, register: null }
+    range = { ...next, start: range.start }
+  }
+
+  const { end, trailingBlank } = range
+  let start = range.start
+  // Apply EOF fallback to the whole selection.
+  if (around && end === text.length && !isParagraphSeparator(text, lineStart(text, end))) {
+    while (start > 0) {
+      const previous = lineStart(text, start - 1)
+      if (!isParagraphSeparator(text, previous)) break
+      start = previous
+    }
+  }
+  const registerSpan = { start, end }
+  const deleteStart = operation === "d" && start > 0 && end === text.length && (text[end - 1] !== "\n" || trailingBlank) ? start - 1 : start
+  const changeEnd = operation === "c" && text[end - 1] === "\n" && !trailingBlank ? end - 1 : end
+  const result = buildOperatorResult(text, { start: deleteStart, end: changeEnd }, registerSpan, true)
+  if (trailingBlank && end > start && result.register) result.register.text += "\n"
+  return result
+}
+
+// The whole buffer is a single extent; inside and around are the same span.
+export function bufferTextObjectOperation(textarea: TextareaRenderable): VimOperatorResult {
+  const text = textarea.plainText
+  if (!text.length) return { span: null, register: null }
+  return { span: { start: 0, end: text.length }, register: { text: text + "\n", linewise: true } }
+}
+
 function isWord(char: string) {
   return /[A-Za-z0-9_]/.test(char)
 }
@@ -579,16 +678,26 @@ function wordTextObjectBlankSpan(text: string, cursor: number, big: boolean): Vi
 }
 
 function wordTextObjectAroundBlankSpan(text: string, blank: VimSpan, big: boolean): VimSpan | null {
-  let end = blank.end
-  while (end < text.length && text[end] !== "\n" && wordClass(text[end], big) === "blank") end++
-  if (end >= text.length || text[end] === "\n") return null
+  const end = blank.end
+  if (end < text.length && text[end] !== "\n") {
+    // The run is followed on the same line: extend to the end of that word.
+    // nvim adds no trailing whitespace here (only the word-start branch does).
+    const inner = wordTextObjectInnerSpan(text, end, big)
+    return inner ? { start: blank.start, end: inner.end } : null
+  }
 
-  const inner = wordTextObjectInnerSpan(text, end, big)
-  if (!inner) return null
-  end = inner.end
-  while (end < text.length && text[end] !== "\n" && wordClass(text[end], big) === "blank") end++
+  // The run ends at EOL: nvim crosses at most that EOL and stops at the next blank line.
+  if (end >= text.length) return null
+  let pos = end + 1
+  while (pos < text.length) {
+    if (text[pos - 1] === "\n" && text[pos] === "\n") return { start: blank.start, end: pos }
+    if (wordClass(text[pos], big) !== "blank") break
+    pos++
+  }
+  if (pos >= text.length) return null
 
-  return { start: blank.start, end }
+  const inner = wordTextObjectInnerSpan(text, pos, big)
+  return inner ? { start: blank.start, end: inner.end } : null
 }
 
 export function bracketTextObjectOperation(
@@ -732,6 +841,16 @@ function isEscaped(text: string, position: number) {
   let backslashes = 0
   for (let index = position - 1; index >= 0 && text[index] === "\\"; index--) backslashes++
   return backslashes % 2 === 1
+}
+
+// q matches the first quote kind with a pair on the cursor's line, in a fixed
+// order, so " always wins over ' and ` when both are present.
+export function anyQuoteTextObjectOperation(textarea: TextareaRenderable, around: boolean): VimOperatorResult {
+  for (const quote of ['"', "'", "`"]) {
+    const result = quoteTextObjectOperation(textarea, around, quote)
+    if (result.span) return result
+  }
+  return { span: null, register: null }
 }
 
 function deleteOffsets(textarea: TextareaRenderable, startOffset: number, endOffset: number) {

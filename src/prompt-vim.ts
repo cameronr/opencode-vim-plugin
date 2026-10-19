@@ -1,12 +1,9 @@
 import { spawnSync } from "node:child_process"
-import type { KeyEvent, Renderable, TuiPluginApi } from "@opencode-ai/plugin/tui"
-import type { Binding, CommandContext, KeyLike } from "@opentui/keymap"
-import { RGBA, type TextareaRenderable } from "@opentui/core"
-import { createVimHandler } from "./vim/handler"
+import type { Context, KeymapCommand } from "@opencode/plugin/tui/context"
+import { CliRenderEvents, RGBA, type KeyEvent, type TextareaRenderable } from "@opentui/core"
+import { createVimHandler, type VimEvent } from "./vim/handler"
 import { useVimIndicator } from "./vim/indicator"
 import { createVimState, type VimMode, type VimRegister } from "./vim/state"
-
-type VimContext = CommandContext<Renderable, KeyEvent>
 
 const PROMPT_RENDER_PATCH = Symbol("ocv-plugin.prompt.render.patch")
 
@@ -28,10 +25,8 @@ type TextareaLike = TextareaRenderable & {
   [PROMPT_RENDER_PATCH]?: PromptRenderPatch
 }
 
-const COMMAND_KEY = "ocv-plugin.key"
-const COMMAND_QUIT = "ocv-plugin.quit"
 const COMMAND_PALETTE = "command.palette.show"
-const COMMAND_EXIT = "app.exit"
+const COMMAND_KEY = "ocv-plugin.key"
 const YANK_FLASH_MS = 70
 // Clipboard tools answer in single-digit milliseconds when they work; a short
 // timeout only caps the stall when they don't (spawnSync blocks the render loop).
@@ -54,48 +49,27 @@ function isTextareaLike(value: unknown): value is TextareaLike {
 }
 
 const shiftedSymbols: Record<string, string> = {
-  "1": "!",
-  "2": "@",
-  "3": "#",
-  "4": "$",
-  "5": "%",
-  "6": "^",
-  "7": "&",
-  "8": "*",
-  "9": "(",
-  "0": ")",
-  "-": "_",
-  "=": "+",
-  "[": "{",
-  "]": "}",
-  "\\": "|",
-  ";": ":",
-  "'": '"',
-  ",": "<",
-  ".": ">",
-  "/": "?",
-  "`": "~",
+  "1": "!", "2": "@", "3": "#", "4": "$", "5": "%", "6": "^", "7": "&", "8": "*", "9": "(", "0": ")",
+  "-": "_", "=": "+", "[": "{", "]": "}", "\\": "|", ";": ":", "'": '"', ",": "<", ".": ">", "/": "?", "`": "~",
 }
 
-function vimEvent(event: KeyEvent) {
-  const symbol = event.shift ? shiftedSymbols[event.name] : undefined
-  if (!symbol) return event
-  return {
-    ...event,
-    name: symbol,
-    sequence: symbol,
-    raw: symbol,
-    preventDefault: () => event.preventDefault(),
-    stopPropagation: () => event.stopPropagation(),
-  }
+function vimEvent(event: KeyEvent): VimEvent {
+  if (hasModifier(event)) return event
+  const typed = event.sequence?.length === 1 ? event.sequence : event.raw?.length === 1 ? event.raw : undefined
+  const shifted = event.shift ? shiftedSymbols[event.name] : undefined
+  const text = shifted && typed === event.name
+    ? shifted
+    : typed && typed.charCodeAt(0) > 32 && typed.charCodeAt(0) !== 127 ? typed : shifted
+  if (!text) return event
+  return { ...event, name: text, sequence: text, preventDefault: () => event.preventDefault() }
 }
 
 function hasModifier(event: { ctrl?: boolean; meta?: boolean; super?: boolean }) {
   return !!event.ctrl || !!event.meta || !!event.super
 }
 
-function selectedForeground(api: TuiPluginApi, bg: RGBA) {
-  if (api.theme.current.background.a > 0) return api.theme.current.background
+function selectedForeground(context: Context, bg: RGBA) {
+  if (context.theme.background.base.a > 0) return context.theme.background.base
   return 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b > 0.5 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
 }
 
@@ -134,11 +108,7 @@ function clipboardWrite(text: string): "ok" | "missing" | "failed" {
   return result.status === 0 ? "ok" : "failed"
 }
 
-// OpenCode expands commas in string bindings as separators, so literal comma keys must use object form.
-const commaKey = { name: "," } as const satisfies KeyLike
-const shiftedCommaKey = { name: ",", shift: true } as const satisfies KeyLike
-
-const normalKeys: KeyLike[] = [
+const normalKeys: string[] = [
   "escape",
   "return",
   "space",
@@ -184,7 +154,6 @@ const normalKeys: KeyLike[] = [
   "t",
   "shift+t",
   ";",
-  commaKey,
   "i",
   "shift+i",
   "a",
@@ -203,6 +172,7 @@ const normalKeys: KeyLike[] = [
   "y",
   "p",
   "shift+p",
+  "q",
   "u",
   "ctrl+r",
   ".",
@@ -210,8 +180,8 @@ const normalKeys: KeyLike[] = [
   "shift+v",
   "shift+j",
   "z",
-  "slash",
-  "shift+slash",
+  "/",
+  "shift+/",
   "shift+;",
   "shift+'",
   "shift+`",
@@ -227,7 +197,6 @@ const normalKeys: KeyLike[] = [
   "]",
   "shift+[",
   "shift+]",
-  shiftedCommaKey,
   "shift+.",
   "%",
   "<",
@@ -243,7 +212,7 @@ const normalKeys: KeyLike[] = [
   "ctrl+v",
 ]
 
-const insertPrintableKeys: KeyLike[] = [
+const insertPrintableKeys: string[] = [
   ..."abcdefghijklmnopqrstuvwxyz".split(""),
   ..."0123456789".split(""),
   "space",
@@ -254,9 +223,8 @@ const insertPrintableKeys: KeyLike[] = [
   "\\",
   ";",
   "'",
-  commaKey,
   ".",
-  "slash",
+  "/",
   "`",
   "shift+a",
   "shift+b",
@@ -319,9 +287,8 @@ const insertPrintableKeys: KeyLike[] = [
   "<",
   ">",
   "?",
-  shiftedCommaKey,
   "shift+.",
-  "shift+slash",
+  "shift+/",
   "shift+;",
   "shift+'",
   "shift+`",
@@ -333,7 +300,7 @@ function unique<Value>(items: readonly Value[]) {
 }
 
 export function createPromptVim(
-  api: TuiPluginApi,
+  context: Context,
   input: {
     enabled: () => boolean
     initialMode?: VimMode
@@ -349,10 +316,11 @@ export function createPromptVim(
   let onPromptClear = () => {}
 
   function currentPromptEditor() {
-    if (api.ui.dialog.open) return
-    const route = api.route.current.name
+    // Dialogs and menus push non-base keymap modes.
+    if (context.keymap.mode.current() !== "base") return
+    const route = context.ui.router.current().type
     if (route !== "home" && route !== "session") return
-    const editor = api.renderer.currentFocusedEditor
+    const editor = context.renderer.currentFocusedEditor
     if (!isTextareaLike(editor)) return
     if (editor.focused === false) return
     if (editor !== lastPromptEditor) {
@@ -376,7 +344,7 @@ export function createPromptVim(
       pasteLayoutTimers.delete(timer)
       if (editor.isDestroyed) return
       editor.getLayoutNode().markDirty()
-      api.renderer.requestRender()
+      context.renderer.requestRender()
     }, 0)
     pasteLayoutTimers.add(timer)
   }
@@ -413,8 +381,8 @@ export function createPromptVim(
       if (row < 0 || row >= buffer.height) return
       if (col < 0 || col >= buffer.width) return
       const offset = (row * buffer.width + col) * 4
-      buffer.buffers.fg.set(selectedForeground(api, api.theme.current.text).buffer.subarray(0, 4), offset)
-      buffer.buffers.bg.set(api.theme.current.text.buffer.subarray(0, 4), offset)
+      buffer.buffers.fg.set(selectedForeground(context, context.theme.text.base).buffer.subarray(0, 4), offset)
+      buffer.buffers.bg.set(context.theme.text.base.buffer.subarray(0, 4), offset)
     }
     const originalClear = editor.clear
     const patchedClear: TextareaLike["clear"] = (...args) => {
@@ -457,17 +425,20 @@ export function createPromptVim(
   }
 
   function applyCursorStyle() {
+    if (!input.enabled()) {
+      prunePatchedEditors()
+      for (const editor of patchedEditors) {
+        const patch = editor[PROMPT_RENDER_PATCH]
+        if (patch) restorePromptAppearance(editor, patch)
+      }
+      return
+    }
     const editor = currentPromptEditor()
     if (!editor) return
     patchPromptEditor(editor)
-    const patch = editor[PROMPT_RENDER_PATCH]!
-    if (!input.enabled()) {
-      restorePromptAppearance(editor, patch)
-      return
-    }
     const visual = state.isVisual()
-    editor.selectionBg = visual ? api.theme.current.secondary : undefined
-    editor.selectionFg = visual ? selectedForeground(api, api.theme.current.secondary) : undefined
+    editor.selectionBg = visual ? context.theme.hue.accent[300] : undefined
+    editor.selectionFg = visual ? selectedForeground(context, context.theme.hue.accent[300]) : undefined
     if (state.isInsert()) {
       editor.showCursor = true
       editor.cursorStyle = { style: "line", blinking: true }
@@ -481,6 +452,20 @@ export function createPromptVim(
     editor.cursorStyle = { style: "block", blinking: false }
     editor.showCursor = false
     editor.requestRender()
+  }
+
+  // The v2 TUI renders the plugin slot tree once and caches it: Solid
+  // effects and Show re-reads inside that tree never run on the host. The
+  // indicator is a plugin-owned element, so it is updated imperatively from
+  // the same call sites that restyle the cursor (every mode change goes
+  // through one of them).
+  let styleSync: (() => void) | undefined
+  function syncStyle() {
+    applyCursorStyle()
+    styleSync?.()
+  }
+  function setStyleSync(fn: () => void) {
+    styleSync = fn
   }
 
   function textarea() {
@@ -510,7 +495,7 @@ export function createPromptVim(
     clipboardFailures = kind === "missing" ? CLIPBOARD_MAX_FAILURES : clipboardFailures + 1
     if (clipboardFailures < CLIPBOARD_MAX_FAILURES || clipboardUnavailable) return
     clipboardUnavailable = true
-    api.ui.toast({ variant: "warning", message: "System clipboard unavailable, using the internal Vim register" })
+    context.ui.toast.show({ variant: "warning", message: "System clipboard unavailable, using the internal Vim register" })
   }
   let flash = 0
   let flashSpan: { start: number; end: number } | undefined
@@ -535,7 +520,7 @@ export function createPromptVim(
       return
     }
     clipboardFailures = 0
-    if (notify) api.ui.toast({ message: "Copied to clipboard", variant: "info" })
+    if (notify) context.ui.toast.show({ message: "Copied to clipboard", variant: "info" })
   }
 
   function submitPrompt() {
@@ -554,7 +539,7 @@ export function createPromptVim(
     editor.editorView.setSelection(span.start, span.end, editor.selectionBg, editor.selectionFg)
     editor.cursorOffset = cursor
     editor.getLayoutNode().markDirty()
-    api.renderer.requestRender()
+    context.renderer.requestRender()
     if (flashTimer) clearTimeout(flashTimer)
     flashTimer = setTimeout(() => {
       if (editor.isDestroyed) return
@@ -575,7 +560,7 @@ export function createPromptVim(
       flashSpan = undefined
       editor.clearSelection()
       editor.getLayoutNode().markDirty()
-      api.renderer.requestRender()
+      context.renderer.requestRender()
     }, YANK_FLASH_MS)
   }
 
@@ -609,16 +594,16 @@ export function createPromptVim(
     },
     submit: submitPrompt,
     commandPalette() {
-      api.keymap.dispatchCommand(COMMAND_PALETTE)
+      context.keymap.dispatch(COMMAND_PALETTE)
     },
     flash: flashYank,
     scroll(action) {
-      if (action === "line-down") api.keymap.dispatchCommand("session.line.down")
-      if (action === "line-up") api.keymap.dispatchCommand("session.line.up")
-      if (action === "half-down") api.keymap.dispatchCommand("session.half.page.down")
-      if (action === "half-up") api.keymap.dispatchCommand("session.half.page.up")
-      if (action === "page-down") api.keymap.dispatchCommand("session.page.down")
-      if (action === "page-up") api.keymap.dispatchCommand("session.page.up")
+      if (action === "line-down") context.keymap.dispatch("session.line.down")
+      if (action === "line-up") context.keymap.dispatch("session.line.up")
+      if (action === "half-down") context.keymap.dispatch("session.half.page.down")
+      if (action === "half-up") context.keymap.dispatch("session.half.page.up")
+      if (action === "page-down") context.keymap.dispatch("session.page.down")
+      if (action === "page-up") context.keymap.dispatch("session.page.up")
     },
     jump(action) {
       if (action === "high" || action === "middle" || action === "low") {
@@ -631,13 +616,11 @@ export function createPromptVim(
         if (action === "bottom") editor.gotoBufferEnd()
         return
       }
-      if (action === "top") api.keymap.dispatchCommand("session.first")
-      if (action === "bottom") api.keymap.dispatchCommand("session.last")
+      if (action === "top") context.keymap.dispatch("session.first")
+      if (action === "bottom") context.keymap.dispatch("session.last")
     },
-    // Returning false makes "/" and "?" fall through to autocomplete/insert
-    // instead of the copy-mode search path (see handler.ts dispatch).
     copySearchStart: () => false,
-    autocomplete: () => false,
+    autocomplete: (trigger) => trigger,
     langmap: input.langmap,
     vimEscapeSequence: input.vimEscapeSequence,
   })
@@ -649,67 +632,68 @@ export function createPromptVim(
     state.resetHistory()
     if (mode === "visual" || mode === "visual-line" || mode === "replace") state.setMode("normal")
     else if (input.enabled() && mode === "insert") handler.beginInsertEdit()
+    syncStyle()
   }
   onPromptClear = () => {
     handler.cancelPending()
     state.resetHistory()
     state.setMode(input.insertAfterSubmit ? "insert" : "normal")
     if (input.enabled() && input.insertAfterSubmit) handler.beginInsertEdit()
+    syncStyle()
   }
 
   const indicator = useVimIndicator({
     enabled: input.enabled,
-    active: () => api.route.current.name === "home" || api.route.current.name === "session",
+    active: () => {
+      const route = context.ui.router.current().type
+      return route === "home" || route === "session"
+    },
     state,
   })
 
-  const commands = [
-    {
-      name: COMMAND_QUIT,
-      title: "Quit",
-      namespace: "palette",
-      run: () => api.keymap.dispatchCommand(COMMAND_EXIT),
-      category: "System",
-    },
-    {
-      name: COMMAND_KEY,
-      title: "Vim key",
-      desc: "Handle Vim prompt key",
-      category: "Vim",
-      hidden: true,
-      run(ctx: VimContext) {
-        if (!promptEditor()) return false
-        const event = vimEvent(ctx.event)
-        if ((state.isInsert() || state.isReplace()) && event.name === "return" && !hasModifier(event)) {
-          event.preventDefault()
-          event.stopPropagation()
-          if (input.enterSubmit) submitPrompt()
-          else {
-            if (state.isReplace()) handler.recordInsertText("\n")
-            textarea().insertText("\n")
-          }
-          applyCursorStyle()
-          return true
-        }
-        const handled = handler.handleKey(event)
-        applyCursorStyle()
-        if (handled) ctx.event.stopPropagation()
-        return handled
-      },
-    },
-  ]
+  function runVimKey(event: KeyEvent) {
+    const editor = promptEditor()
+    if (!editor) return false
+    const keyEvent = vimEvent(event)
+    if ((state.isInsert() || state.isReplace()) && keyEvent.name === "return" && !hasModifier(keyEvent)) {
+      if (input.enterSubmit) submitPrompt()
+      else {
+        if (state.isReplace()) handler.recordInsertText("\n")
+        textarea().insertText("\n")
+      }
+      syncStyle()
+      return
+    }
+    const handled = handler.handleKey(keyEvent)
+    syncStyle()
+    if (!handled) return false
+  }
 
-  const bindings: Binding<Renderable, KeyEvent>[] = unique([
+  function onComma(event: KeyEvent) {
+    if (event.name !== "," || hasModifier(event)) return
+    if (runVimKey(event) === false) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  context.renderer.keyInput.prependListener("keypress", onComma)
+
+  const keys = unique([
     ...normalKeys,
     ...insertPrintableKeys,
-    ...Object.keys(input.langmap?.() ?? {}),
-  ]).map((key) => ({
-    key,
-    cmd: COMMAND_KEY,
-    preventDefault: false,
-  }))
+    ...Object.keys(input.langmap?.() ?? {}).map((key) => key === " " ? "space" : key),
+  ]).filter((key) => !key.includes(","))
+  const vimCommands: KeymapCommand[] = [{
+    id: COMMAND_KEY,
+    bind: keys.join(","),
+    run: (_input, event) => event ? runVimKey(event) : false,
+  }]
+
+  context.renderer.on(CliRenderEvents.FOCUSED_EDITOR, syncStyle)
+  syncStyle()
 
   function dispose() {
+    context.renderer.off(CliRenderEvents.FOCUSED_EDITOR, syncStyle)
+    context.renderer.keyInput.off("keypress", onComma)
     handler.cancelPending()
     state.cancelEdit()
     for (const timer of pasteLayoutTimers) clearTimeout(timer)
@@ -736,13 +720,14 @@ export function createPromptVim(
     }
     patchedEditors.clear()
     flashSpan = undefined
-    api.renderer.requestRender()
+    context.renderer.requestRender()
   }
 
   return {
     dispose,
     cancelPending: handler.cancelPending,
-    applyCursorStyle,
+    applyCursorStyle: syncStyle,
+    setStyleSync,
     active: () => Boolean(promptEditor()),
     indicator,
     pending: state.pending,
@@ -750,7 +735,6 @@ export function createPromptVim(
     isVisualLine: state.isVisualLine,
     mode: state.mode,
     setMode: state.setMode,
-    commands,
-    bindings,
+    vimCommands,
   }
 }

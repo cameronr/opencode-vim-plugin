@@ -62,7 +62,10 @@ import {
   pasteOverSelection,
   pasteOverVisualSelection,
   previousParagraphOperation,
+  anyQuoteTextObjectOperation,
   bracketTextObjectOperation,
+  bufferTextObjectOperation,
+  paragraphTextObjectOperation,
   quoteTextObjectOperation,
   prevWordStart,
   replaceUnderCursor,
@@ -191,7 +194,7 @@ export function createVimHandler(input: {
   setCopyCol?: (offset: number) => void
   setCopyStick?: (stick: "start" | "first" | "end") => void
   copyScroll?: (action: "center" | "top" | "bottom") => void
-  autocomplete?: () => false | "@" | "/"
+  autocomplete?: (trigger: "@" | "/") => false | "@" | "/"
   flash?: (span: { start: number; end: number }) => void
   history?: () => boolean
   snapshot?: () => VimSnapshot
@@ -208,7 +211,7 @@ export function createVimHandler(input: {
   let pendingOperatorCount = 1
   let pendingOperatorFind: { operation: VimOperator; find: VimFindOperator } | undefined
   let pendingOperatorDisplay: VimOperator | undefined
-  let pendingTextObject: { operation: VimOperator; scope: VimTextObjectScope } | undefined
+  let pendingTextObject: { operation: VimOperator; scope: VimTextObjectScope; count: number } | undefined
 
   // Two-key escape sequence support (e.g., "jk" to escape insert mode)
   const escapeSeq = input.vimEscapeSequence
@@ -864,8 +867,8 @@ export function createVimHandler(input: {
 
   function startTextObject(event: VimEvent, operation: VimOperator, scope: VimTextObjectScope) {
     const display = (input.state.pendingDisplay() || operation) + (scope === "around" ? "a" : "i")
-    takeOperatorCount()
-    pendingTextObject = { operation, scope }
+    const count = takeOperatorCount()
+    pendingTextObject = { operation, scope, count }
     input.state.setPending(operation, display)
     event.preventDefault()
     return true
@@ -877,7 +880,7 @@ export function createVimHandler(input: {
     return false
   }
 
-  function resolveTextObject(event: VimEvent, key: string, scope: VimTextObjectScope, operation: VimOperator) {
+  function resolveTextObject(event: VimEvent, key: string, scope: VimTextObjectScope, operation: VimOperator, count: number) {
     if ((key === "w" || isShifted(event, "w")) && !hasModifier(event)) {
       const big = isShifted(event, "w")
       return () => wordTextObjectOperation(input.textarea(), scope === "around", big)
@@ -885,8 +888,17 @@ export function createVimHandler(input: {
     if ((key === '"' || key === "'" || key === "`") && !hasModifier(event)) {
       return () => quoteTextObjectOperation(input.textarea(), scope === "around", key)
     }
+    if (key === "q" && !event.shift && !hasModifier(event)) {
+      return () => anyQuoteTextObjectOperation(input.textarea(), scope === "around")
+    }
     if ("()[]{}<>".includes(key) && !hasModifier(event)) {
       return () => bracketTextObjectOperation(input.textarea(), scope === "around", key, operation)
+    }
+    if (key === "p" && !event.shift && !hasModifier(event)) {
+      return () => paragraphTextObjectOperation(input.textarea(), scope === "around", operation, count)
+    }
+    if (key === "l" && !event.shift && !hasModifier(event)) {
+      return () => bufferTextObjectOperation(input.textarea())
     }
   }
 
@@ -898,7 +910,7 @@ export function createVimHandler(input: {
     }
 
     const textObject = pendingTextObject
-    const operation = resolveTextObject(event, key, textObject.scope, textObject.operation)
+    const operation = resolveTextObject(event, key, textObject.scope, textObject.operation, textObject.count)
     pendingTextObject = undefined
     if (operation) {
       pendingOperatorCount = 1
@@ -1408,9 +1420,10 @@ export function createVimHandler(input: {
     }
 
     if ((key === "/" || key === "@") && !hasModifier(event)) {
-      if (input.autocomplete && input.textarea().cursorOffset === 0 && input.textarea().plainText.length === 0) {
+      const autocomplete = input.autocomplete?.(key)
+      if (autocomplete && input.textarea().cursorOffset === 0 && input.textarea().plainText.length === 0) {
         input.state.setMode("insert")
-        input.textarea().insertText(key)
+        input.textarea().insertText(autocomplete)
         event.preventDefault()
         return true
       }
@@ -1613,7 +1626,11 @@ export function createVimHandler(input: {
     }
 
     if ((key === "j" || key === "down") && !event.shift && !hasModifier(event)) {
+      const before = input.textarea().cursorOffset
       countedMotion(() => moveVertical("down"))
+      // A no-op arrow key falls through to the host so opencode can use it
+      // (e.g. subagent navigation). j always consumes.
+      if (key === "down" && !input.state.isVisual() && input.textarea().cursorOffset === before) return false
       event.preventDefault()
       return true
     }
@@ -1637,7 +1654,11 @@ export function createVimHandler(input: {
     }
 
     if ((key === "k" || key === "up") && !event.shift && !hasModifier(event)) {
+      const before = input.textarea().cursorOffset
       countedMotion(() => moveVertical("up"))
+      // A no-op arrow key falls through to the host so opencode can use it
+      // (e.g. subagent navigation). k always consumes.
+      if (key === "up" && !input.state.isVisual() && input.textarea().cursorOffset === before) return false
       event.preventDefault()
       return true
     }

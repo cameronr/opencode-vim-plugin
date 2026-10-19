@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@leohenon/opencode-vim-plugin",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Vim mode plugin for OpenCode.",
   "keywords": [
     "opencode",
@@ -23,7 +23,6 @@
     "access": "public"
   },
   "exports": {
-    ".": "./dist/tui.js",
     "./tui": "./dist/tui.js"
   },
   "files": [
@@ -34,28 +33,23 @@
     "test": "bun test",
     "build": "bun run script/build.ts",
     "typecheck": "tsc --noEmit",
-    "check:keymap": "bun run script/check-keymap.ts",
     "check:adapter": "bun run script/check-adapter.ts",
-    "check": "bun run typecheck && bun run test && bun run check:keymap && bun run build && bun run check:adapter",
+    "check": "bun run typecheck && bun run test && bun run build && bun run check:adapter",
     "prepack": "bun run check"
   },
   "engines": {
-    "opencode": ">=1.17.10"
+    "opencode": ">=2.0.25"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.17.10",
-    "@opentui/core": ">=0.4.2",
-    "@opentui/keymap": ">=0.4.2",
-    "@opentui/solid": ">=0.4.2"
+    "@opencode/plugin": ">=2.0.25",
+    "@opentui/core": ">=0.5.16",
+    "@opentui/solid": ">=0.5.16"
   },
   "peerDependenciesMeta": {
-    "@opencode-ai/plugin": {
+    "@opencode/plugin": {
       "optional": true
     },
     "@opentui/core": {
-      "optional": true
-    },
-    "@opentui/keymap": {
       "optional": true
     },
     "@opentui/solid": {
@@ -63,10 +57,10 @@
     }
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.17.10",
-    "@opentui/core": "^0.4.2",
-    "@opentui/keymap": "^0.4.2",
-    "@opentui/solid": "^0.4.2",
+    "@opencode/plugin": "2.0.25",
+    "@opencode/theme": "2.0.25",
+    "@opentui/core": "0.5.16",
+    "@opentui/solid": "0.5.16",
     "@types/bun": "latest",
     "solid-js": "1.9.12",
     "typescript": "^5.9.0"
