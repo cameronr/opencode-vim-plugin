@@ -8,8 +8,6 @@ import { createVimState, type VimMode, type VimRegister } from "./vim/state"
 const PROMPT_RENDER_PATCH = Symbol("ocv-plugin.prompt.render.patch")
 
 type PromptRenderPatch = {
-  original: TextareaLike["render"]
-  patched: TextareaLike["render"]
   originalClear: TextareaLike["clear"]
   patchedClear: TextareaLike["clear"]
   originalPaste: TextareaLike["onPaste"]
@@ -367,23 +365,6 @@ export function createPromptVim(
   function patchPromptEditor(editor: TextareaLike) {
     if (editor[PROMPT_RENDER_PATCH]) return
     prunePatchedEditors()
-    const original = editor.render
-    const patched: TextareaLike["render"] = (buffer, deltaTime) => {
-      original.call(editor, buffer, deltaTime)
-      if (!input.enabled()) return
-      if (!(state.mode() === "normal" || state.isVisual())) return
-      if (!editor.focused) return
-      const cursor = editor.visualCursor
-      if (cursor.visualRow < 0 || cursor.visualRow >= editor.height) return
-      if (cursor.visualCol < 0 || cursor.visualCol >= editor.width) return
-      const row = editor.y + cursor.visualRow
-      const col = editor.x + cursor.visualCol
-      if (row < 0 || row >= buffer.height) return
-      if (col < 0 || col >= buffer.width) return
-      const offset = (row * buffer.width + col) * 4
-      buffer.buffers.fg.set(selectedForeground(context, context.theme.text.base).buffer.subarray(0, 4), offset)
-      buffer.buffers.bg.set(context.theme.text.base.buffer.subarray(0, 4), offset)
-    }
     const originalClear = editor.clear
     const patchedClear: TextareaLike["clear"] = (...args) => {
       originalClear.apply(editor, args)
@@ -407,8 +388,6 @@ export function createPromptVim(
       }
     }
     editor[PROMPT_RENDER_PATCH] = {
-      original,
-      patched,
       originalClear,
       patchedClear,
       originalPaste,
@@ -418,7 +397,6 @@ export function createPromptVim(
       originalSelectionBg: editor.selectionBg,
       originalSelectionFg: editor.selectionFg,
     }
-    editor.render = patched
     editor.clear = patchedClear
     editor.onPaste = patchedPaste
     patchedEditors.add(editor)
@@ -450,7 +428,7 @@ export function createPromptVim(
       return
     }
     editor.cursorStyle = { style: "block", blinking: false }
-    editor.showCursor = false
+    editor.showCursor = true
     editor.requestRender()
   }
 
@@ -706,7 +684,6 @@ export function createPromptVim(
     for (const editor of patchedEditors) {
       const patch = editor[PROMPT_RENDER_PATCH]
       if (!patch) continue
-      if (editor.render === patch.patched) editor.render = patch.original
       if (editor.clear === patch.patchedClear) editor.clear = patch.originalClear
       if (editor.onPaste === patch.patchedPaste) editor.onPaste = patch.originalPaste
       delete editor[PROMPT_RENDER_PATCH]

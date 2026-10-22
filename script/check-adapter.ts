@@ -436,7 +436,7 @@ for (const indicator of [true, false]) {
   const plugin = ((await import("../dist/tui.js" as string)) as any).default
   const { context } = fakeContext({ initial_mode: "normal", indicator })
   let nativePastes = 0
-  const editors = [fakeTextarea(), fakeTextarea()]
+  const editors: any[] = [fakeTextarea(), fakeTextarea()]
   const nativePaste = () => { nativePastes++ }
   for (const editor of editors) editor.onPaste = nativePaste
   context.renderer.currentFocusedEditor = editors[0]
@@ -447,7 +447,7 @@ for (const indicator of [true, false]) {
       context.renderer.currentFocusedEditor = editor
       context.renderer.emit(CliRenderEvents.FOCUSED_EDITOR, editor, editors[0])
     }
-    assert(editor.showCursor === false, "initial and newly focused normal prompts should hide the native cursor before a keypress")
+    assert(editor.showCursor === true && editor.cursorStyle?.style === "block", "initial and newly focused normal prompts should show a block cursor before a keypress")
     assert(editor.onPaste !== nativePaste, "initial and newly focused prompts should install paste protection before a keypress")
     let prevented = false
     editor.onPaste?.({ preventDefault() { prevented = true }, stopPropagation() {} })
@@ -482,7 +482,7 @@ for (const indicator of [true, false]) {
   editor.onPaste = () => nativePastes++
   context.renderer.currentFocusedEditor = editor
   slots[0].mount()
-  assert(editor.showCursor === false, "mounting a normal prompt should hide the native cursor before any keypress")
+  assert(editor.showCursor === true && editor.cursorStyle?.style === "block", "mounting a normal prompt should show a block cursor before any keypress")
   let prevented = false
   editor.onPaste({ preventDefault() { prevented = true }, stopPropagation() {} })
   assert(prevented && nativePastes === 0, "mounting a normal prompt should install paste protection without relying on its indicator")
@@ -625,7 +625,6 @@ for (const bind of [",", " , ", "ctrl+,", "ctrl+, ", "x,,y", "x, ,y"]) {
   editor.cursorStyle = defaultCursorStyle
   editor.selectionBg = defaultSelectionBg
   editor.selectionFg = defaultSelectionFg
-  const originalRender = editor.render
   const originalClear = editor.clear
   const originalSubmit = editor.submit
   const originalPaste = editor.onPaste
@@ -695,7 +694,6 @@ for (const bind of [",", " , ", "ctrl+,", "ctrl+, ", "x,,y", "x, ,y"]) {
   const handled = vimKey(layers, "/")()
   assert(handled !== false, "empty slash should be handled")
   assert(editor.plainText === "/", "slash should enter insert mode and start host autocomplete")
-  assert(editor.render !== originalRender, "focused prompt render should be patched for block cursor drawing")
   vimKey(layers, "escape")()
   editor.clear()
   assert(vimKey(layers, "@")() !== false, "empty @ should be handled")
@@ -711,7 +709,6 @@ for (const bind of [",", " , ", "ctrl+,", "ctrl+, ", "x,,y", "x, ,y"]) {
   assert(editor.selectionBg === defaultSelectionBg, "disabling Vim should restore the prompt selection background")
   assert(editor.selectionFg === defaultSelectionFg, "disabling Vim should restore the prompt selection foreground")
   await cleanup?.()
-  assert(editor.render === originalRender, "prompt cleanup should restore patched render")
   assert(editor.clear === originalClear, "prompt cleanup should restore patched clear")
   assert(editor.submit === originalSubmit, "prompt patching should leave submit unchanged")
   assert(editor.onPaste === originalPaste, "prompt cleanup should restore patched paste")
@@ -990,7 +987,7 @@ for (const dialogOpen of [false, true]) {
     editor.cursorStyle = styles[index]
     context.renderer.currentFocusedEditor = editor
     vimKey(layers, "h")()
-    assert(editor.showCursor === false, "normal mode should hide the native prompt cursor")
+    assert(editor.showCursor === true && editor.cursorStyle?.style === "block", "normal mode should show a block prompt cursor")
   }
   editors[0].focused = false
   if (dialogOpen) {
@@ -1013,20 +1010,20 @@ for (const dialogOpen of [false, true]) {
 {
   const { layers, context, cleanup } = await setup()
   const first: any = fakeTextarea()
-  const firstRender = first.render
+  const firstPaste = first.onPaste
   const second: any = fakeTextarea()
-  const secondRender = second.render
+  const secondPaste = second.onPaste
 
   context.renderer.currentFocusedEditor = first
   vimKey(layers, "x")()
-  assert(first.render !== firstRender, "first prompt editor should be patched")
+  assert(first.onPaste !== firstPaste, "first prompt editor should be patched")
   first.isDestroyed = true
   context.renderer.currentFocusedEditor = second
   vimKey(layers, "x")()
-  assert(second.render !== secondRender, "second prompt editor should be patched")
+  assert(second.onPaste !== secondPaste, "second prompt editor should be patched")
   await cleanup?.()
-  assert(first.render !== firstRender, "destroyed prompt editors should be pruned before cleanup")
-  assert(second.render === secondRender, "live prompt editors should still be restored on cleanup")
+  assert(first.onPaste !== firstPaste, "destroyed prompt editors should be pruned before cleanup")
+  assert(second.onPaste === secondPaste, "live prompt editors should still be restored on cleanup")
 }
 
 {
