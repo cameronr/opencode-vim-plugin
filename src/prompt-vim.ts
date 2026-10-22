@@ -341,7 +341,6 @@ export function createPromptVim(
     const timer = setTimeout(() => {
       pasteLayoutTimers.delete(timer)
       if (editor.isDestroyed) return
-      editor.getLayoutNode().markDirty()
       context.renderer.requestRender()
     }, 0)
     pasteLayoutTimers.add(timer)
@@ -358,7 +357,6 @@ export function createPromptVim(
     editor.cursorStyle = patch.originalCursorStyle
     editor.selectionBg = patch.originalSelectionBg
     editor.selectionFg = patch.originalSelectionFg
-    editor.getLayoutNode().markDirty()
     editor.requestRender()
   }
 
@@ -516,7 +514,6 @@ export function createPromptVim(
     const cursor = editor.cursorOffset
     editor.editorView.setSelection(span.start, span.end, editor.selectionBg, editor.selectionFg)
     editor.cursorOffset = cursor
-    editor.getLayoutNode().markDirty()
     context.renderer.requestRender()
     if (flashTimer) clearTimeout(flashTimer)
     flashTimer = setTimeout(() => {
@@ -537,7 +534,6 @@ export function createPromptVim(
       }
       flashSpan = undefined
       editor.clearSelection()
-      editor.getLayoutNode().markDirty()
       context.renderer.requestRender()
     }, YANK_FLASH_MS)
   }

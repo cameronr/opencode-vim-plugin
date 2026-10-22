@@ -928,11 +928,9 @@ for (const bind of [",", " , ", "ctrl+,", "ctrl+, ", "x,,y", "x, ,y"]) {
 {
   const { layers, context } = await setup()
   const editor: any = fakeTextarea()
-  const stats = { layoutRefreshes: 0, renderRequests: 0 }
-  const layoutRefreshes = () => stats.layoutRefreshes
+  const stats = { renderRequests: 0 }
   const renderRequests = () => stats.renderRequests
   let resolveHostPaste: (() => void) | undefined
-  editor.getLayoutNode = () => ({ markDirty: () => stats.layoutRefreshes++ })
   editor.onPaste = () =>
     new Promise<void>((resolve) => {
       resolveHostPaste = resolve
@@ -943,15 +941,14 @@ for (const bind of [",", " , ", "ctrl+,", "ctrl+, ", "x,,y", "x, ,y"]) {
   vimKey(layers, "i")()
   editor.onPaste({ preventDefault() {}, stopPropagation() {} })
   await new Promise((resolve) => setTimeout(resolve, 0))
-  assert(layoutRefreshes() === 0, "paste layout refresh should wait for the host paste handler")
   // The indicator's imperative sync already requested frames for the mode
-  // change; the paste path must add exactly one of its own.
+  // change; the paste path must add exactly one of its own, and only once the
+  // host paste handler settles.
   const rendersBeforePaste = renderRequests()
   resolveHostPaste?.()
   await Promise.resolve()
   await new Promise((resolve) => setTimeout(resolve, 0))
-  assert(layoutRefreshes() === 1, "completed pastes should refresh the prompt layout")
-  assert(renderRequests() === rendersBeforePaste + 1, "completed pastes should request a render after refreshing the prompt layout")
+  assert(renderRequests() === rendersBeforePaste + 1, "completed pastes should request exactly one render")
 }
 
 {
