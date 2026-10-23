@@ -666,11 +666,16 @@ export function createPromptVim(
     }
     // While typing, the prompt owns the arrow keys: Up/Down always move the
     // caret and must never fall through to the host (e.g. subagent cycling).
-    // Consuming the key here is required because the bound command already
-    // intercepted it, so the textarea's own caret handling would not run.
+    // Let the handler run first so a pending two-key escape sequence (e.g.
+    // "jk") is reset; otherwise a later escape-second would delete text at the
+    // moved caret. The handler never moves the caret for arrows in insert or
+    // replace mode, so perform the native move here, then consume so the host
+    // never sees the key.
     if ((state.isInsert() || state.isReplace()) && (keyEvent.name === "down" || keyEvent.name === "up") && !hasModifier(keyEvent)) {
-      if (keyEvent.name === "down") editor.moveCursorDown()
-      else editor.moveCursorUp()
+      if (!handler.handleKey(keyEvent)) {
+        if (keyEvent.name === "down") editor.moveCursorDown()
+        else editor.moveCursorUp()
+      }
       syncStyle()
       return
     }

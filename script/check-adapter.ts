@@ -948,6 +948,26 @@ for (const [label, key, height, startRow, startOffset, expectedOffset] of [
 }
 
 {
+  // A two-key escape sequence (e.g. "jk") must be reset by an intervening
+  // Up/Down. Without the reset, typing j, Down, k within the escape window
+  // would complete the escape at the moved caret and delete unrelated text.
+  const { layers, context, cleanup } = await setup({ initial_mode: "insert", vim_escape_sequence: "jk" })
+  const editor: any = fakeTextarea()
+  editor.plainText = "abcd"
+  editor.height = 2
+  editor.visualCursor = { visualRow: 0, visualCol: 0 }
+  editor.cursorOffset = 1
+  context.renderer.currentFocusedEditor = editor
+  vimKey(layers, "j")()
+  assert(vimKey(layers, "down")() !== false, "Down should stay consumed while an escape sequence is pending")
+  assert(editor.cursorOffset === 2, "Down should move the caret while an escape sequence is pending")
+  assert(vimKey(layers, "k")() === false, "k after an interrupted escape sequence should insert, not complete the escape")
+  assert(editor.plainText === "abcd", "an interrupted escape sequence must not delete text at the moved caret")
+  assert(editor.cursorStyle?.style === "line", "an interrupted escape sequence should stay in insert mode")
+  await cleanup?.()
+}
+
+{
   const { layers, context } = await setup()
   const editor: any = fakeTextarea()
   const stats = { layoutRefreshes: 0, renderRequests: 0 }
