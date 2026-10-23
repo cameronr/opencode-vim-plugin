@@ -925,6 +925,45 @@ for (const bind of [",", " , ", "ctrl+,", "ctrl+, ", "x,,y", "x, ,y"]) {
   assert(Boolean(stats.nativePastes), "bracketed paste should reach the editor in insert mode")
 }
 
+for (const [label, key, height, startRow, startOffset, expectedOffset] of [
+  ["Down multi-line", "down", 2, 0, 0, 1],
+  ["Down single line", "down", 1, 0, 0, 0],
+  ["Up multi-line", "up", 2, 1, 3, 2],
+  ["Up first line", "up", 2, 0, 0, 0],
+] as const) {
+  const { layers, context, cleanup } = await setup({ initial_mode: "insert" })
+  const editor: any = fakeTextarea()
+  editor.plainText = "ab\ncd"
+  editor.height = height
+  editor.visualCursor = { visualRow: startRow, visualCol: 0 }
+  editor.cursorOffset = startOffset
+  context.renderer.currentFocusedEditor = editor
+  const handled = vimKey(layers, key)()
+  assert(handled !== false, `${label} must be consumed in insert mode, never fall through to subagent navigation`)
+  assert(editor.cursorOffset === expectedOffset, `${label} should move the caret and nothing else`)
+  await cleanup?.()
+}
+
+{
+  // A two-key escape sequence (e.g. "jk") must be reset by an intervening
+  // Up/Down. Without the reset, typing j, Down, k within the escape window
+  // would complete the escape at the moved caret and delete unrelated text.
+  const { layers, context, cleanup } = await setup({ initial_mode: "insert", vim_escape_sequence: "jk" })
+  const editor: any = fakeTextarea()
+  editor.plainText = "abcd"
+  editor.height = 2
+  editor.visualCursor = { visualRow: 0, visualCol: 0 }
+  editor.cursorOffset = 1
+  context.renderer.currentFocusedEditor = editor
+  vimKey(layers, "j")()
+  assert(vimKey(layers, "down")() !== false, "Down should stay consumed while an escape sequence is pending")
+  assert(editor.cursorOffset === 2, "Down should move the caret while an escape sequence is pending")
+  assert(vimKey(layers, "k")() === false, "k after an interrupted escape sequence should insert, not complete the escape")
+  assert(editor.plainText === "abcd", "an interrupted escape sequence must not delete text at the moved caret")
+  assert(editor.cursorStyle?.style === "line", "an interrupted escape sequence should stay in insert mode")
+  await cleanup?.()
+}
+
 {
   const { layers, context } = await setup()
   const editor: any = fakeTextarea()
