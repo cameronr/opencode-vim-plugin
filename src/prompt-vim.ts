@@ -664,6 +664,16 @@ export function createPromptVim(
       syncStyle()
       return
     }
+    // While typing, the prompt owns the arrow keys: Up/Down always move the
+    // caret and must never fall through to the host (e.g. subagent cycling).
+    // Consuming the key here is required because the bound command already
+    // intercepted it, so the textarea's own caret handling would not run.
+    if ((state.isInsert() || state.isReplace()) && (keyEvent.name === "down" || keyEvent.name === "up") && !hasModifier(keyEvent)) {
+      if (keyEvent.name === "down") editor.moveCursorDown()
+      else editor.moveCursorUp()
+      syncStyle()
+      return
+    }
     const handled = handler.handleKey(keyEvent)
     syncStyle()
     if (!handled) return false

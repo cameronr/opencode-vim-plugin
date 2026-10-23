@@ -928,6 +928,25 @@ for (const bind of [",", " , ", "ctrl+,", "ctrl+, ", "x,,y", "x, ,y"]) {
   assert(Boolean(stats.nativePastes), "bracketed paste should reach the editor in insert mode")
 }
 
+for (const [label, key, height, startRow, startOffset, expectedOffset] of [
+  ["Down multi-line", "down", 2, 0, 0, 1],
+  ["Down single line", "down", 1, 0, 0, 0],
+  ["Up multi-line", "up", 2, 1, 3, 2],
+  ["Up first line", "up", 2, 0, 0, 0],
+] as const) {
+  const { layers, context, cleanup } = await setup({ initial_mode: "insert" })
+  const editor: any = fakeTextarea()
+  editor.plainText = "ab\ncd"
+  editor.height = height
+  editor.visualCursor = { visualRow: startRow, visualCol: 0 }
+  editor.cursorOffset = startOffset
+  context.renderer.currentFocusedEditor = editor
+  const handled = vimKey(layers, key)()
+  assert(handled !== false, `${label} must be consumed in insert mode, never fall through to subagent navigation`)
+  assert(editor.cursorOffset === expectedOffset, `${label} should move the caret and nothing else`)
+  await cleanup?.()
+}
+
 {
   const { layers, context } = await setup()
   const editor: any = fakeTextarea()
