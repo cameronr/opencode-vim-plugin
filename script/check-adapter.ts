@@ -247,6 +247,7 @@ function fakeTextarea() {
     getLayoutNode() {
       return { markDirty() {} }
     },
+    focus() {},
     requestRender() {},
     updateSelectionForMovement() {},
     clearSelection() {
@@ -1013,6 +1014,56 @@ for (const [label, key, height, startRow, startOffset, expectedOffset] of [
   context.renderer.currentFocusedEditor = second
   vimKey(layers, "u")()
   assert(second.plainText === "new", "switching prompt editors should isolate Vim undo history")
+}
+
+{
+  // Host focus-war: on the new-session route OpenCode keeps two prompt
+  // renderables for the same logical prompt and flaps focus onto the collapsed
+  // (zero-size) duplicate. The plugin must keep editing the laid-out prompt (so
+  // undo survives) and must not strand the block cursor on the invisible one.
+  const { layers, context, cleanup } = await setup()
+  const laidOut: any = fakeTextarea()
+  const collapsed: any = fakeTextarea()
+  collapsed.width = 0
+  collapsed.height = 0
+  collapsed.cursorStyle = undefined
+
+  // The prompt first settles on the laid-out editor, which becomes the known one.
+  context.renderer.currentFocusedEditor = laidOut
+  vimKey(layers, "i")()
+  laidOut.insertText("abc")
+  vimKey(layers, "escape")()
+  assert(laidOut.plainText === "abc", "the laid-out prompt should hold the typed draft")
+
+  // Focus flaps onto the collapsed duplicate for the SAME prompt (home route).
+  context.renderer.currentFocusedEditor = collapsed
+  vimKey(layers, "u")()
+  assert(laidOut.plainText === "", "undo must survive a host focus-war onto a collapsed duplicate")
+  assert(collapsed.plainText === "", "the collapsed duplicate must never receive edits")
+  assert(laidOut.cursorStyle?.style === "block" && laidOut.showCursor === true, "the block cursor must stay on the laid-out prompt")
+  assert(collapsed.cursorStyle === undefined, "the collapsed duplicate must not receive the cursor style")
+  await cleanup?.()
+}
+
+{
+  // The focus-grab must stay scoped to the same logical prompt: a collapsed
+  // editor on a different session route is a genuine navigation, not a war, so
+  // the plugin adopts it instead of fighting the host.
+  const { layers, context, cleanup } = await setup()
+  const homeEditor: any = fakeTextarea()
+  context.renderer.currentFocusedEditor = homeEditor
+  vimKey(layers, "x")()
+
+  context.ui.router.current = () => ({ type: "session", sessionID: "ses_b" })
+  const otherSession: any = fakeTextarea()
+  otherSession.width = 0
+  otherSession.height = 0
+  otherSession.plainText = "keep"
+  context.renderer.currentFocusedEditor = otherSession
+  // Must not grab homeEditor back across a route change; the new prompt is adopted.
+  assert(vimKey(layers, "x")() !== false, "a collapsed editor on a new route is adopted, not fought")
+  assert(otherSession.plainText === "eep", "the newly adopted session prompt should receive edits")
+  await cleanup?.()
 }
 
 for (const dialogOpen of [false, true]) {
