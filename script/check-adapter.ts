@@ -1035,9 +1035,20 @@ for (const [label, key, height, startRow, startOffset, expectedOffset] of [
   vimKey(layers, "escape")()
   assert(laidOut.plainText === "abc", "the laid-out prompt should hold the typed draft")
 
+  // Model the host: focus() must move currentFocusedEditor and emit FOCUSED_EDITOR,
+  // so the test pins the production focus() call. The native block cursor follows
+  // host focus, so restoring it to the laid-out prompt is what keeps the cursor
+  // visible; without this the assertions below would pass even with focus() removed.
+  laidOut.focus = () => {
+    const previous = context.renderer.currentFocusedEditor
+    context.renderer.currentFocusedEditor = laidOut
+    context.renderer.emit(CliRenderEvents.FOCUSED_EDITOR, laidOut, previous)
+  }
+
   // Focus flaps onto the collapsed duplicate for the SAME prompt (home route).
   context.renderer.currentFocusedEditor = collapsed
   vimKey(layers, "u")()
+  assert(context.renderer.currentFocusedEditor === laidOut, "the plugin must restore host focus to the laid-out prompt")
   assert(laidOut.plainText === "", "undo must survive a host focus-war onto a collapsed duplicate")
   assert(collapsed.plainText === "", "the collapsed duplicate must never receive edits")
   assert(laidOut.cursorStyle?.style === "block" && laidOut.showCursor === true, "the block cursor must stay on the laid-out prompt")
@@ -1063,6 +1074,7 @@ for (const [label, key, height, startRow, startOffset, expectedOffset] of [
   // Must not grab homeEditor back across a route change; the new prompt is adopted.
   assert(vimKey(layers, "x")() !== false, "a collapsed editor on a new route is adopted, not fought")
   assert(otherSession.plainText === "eep", "the newly adopted session prompt should receive edits")
+  assert(context.renderer.currentFocusedEditor === otherSession, "the plugin must not steal host focus back across a route change")
   await cleanup?.()
 }
 
