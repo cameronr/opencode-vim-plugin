@@ -375,14 +375,22 @@ export function createPromptVim(
         event.stopPropagation()
         return
       }
+      const boundary = input.enabled() && (state.mode() === "insert" || state.mode() === "replace")
+      const pre = boundary ? { text: editor.plainText, cursor: editor.cursorOffset } : undefined
+      if (pre) state.commitEdit(pre)
+      const settle = () => {
+        if (pre) {
+          const post = { text: editor.plainText, cursor: editor.cursorOffset }
+          state.push(pre, post)
+          state.beginEdit(post)
+        }
+        refreshPasteLayout(editor)
+      }
       const result = originalPaste?.call(editor, event) as unknown
       if (typeof (result as PromiseLike<unknown> | undefined)?.then === "function") {
-        void Promise.resolve(result).then(
-          () => refreshPasteLayout(editor),
-          () => refreshPasteLayout(editor),
-        )
+        void Promise.resolve(result).then(settle, settle)
       } else {
-        refreshPasteLayout(editor)
+        settle()
       }
     }
     editor[PROMPT_RENDER_PATCH] = {

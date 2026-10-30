@@ -991,6 +991,131 @@ for (const [label, key, height, startRow, startOffset, expectedOffset] of [
 }
 
 {
+  const { layers, context, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  editor.onPaste = () => {
+    editor.insertText("BAR")
+  }
+  context.renderer.currentFocusedEditor = editor
+
+  vimKey(layers, "i")()
+  editor.insertText("foo")
+  editor.onPaste({ preventDefault() {}, stopPropagation() {} })
+  vimKey(layers, "escape")()
+  vimKey(layers, "u")()
+  assert(editor.plainText === "foo", "a paste should undo alone, without taking the typed text with it")
+  vimKey(layers, "u")()
+  assert(editor.plainText === "", "the typed text should undo as its own entry after the paste boundary")
+  await cleanup?.()
+}
+
+{
+  const { layers, context, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  editor.onPaste = () => {
+    editor.insertText("BAR")
+  }
+  context.renderer.currentFocusedEditor = editor
+
+  vimKey(layers, "i")()
+  editor.insertText("foo")
+  editor.onPaste({ preventDefault() {}, stopPropagation() {} })
+  vimKey(layers, "escape")()
+  vimKey(layers, "u")()
+  assert(editor.plainText === "foo", "the paste should undo alone")
+  vimKey(layers, "ctrl+r")()
+  assert(editor.plainText === "fooBAR", "redo should restore the pasted text across the paste boundary")
+  await cleanup?.()
+}
+
+{
+  const { layers, context, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  editor.onPaste = () => {
+    editor.insertText("B")
+  }
+  context.renderer.currentFocusedEditor = editor
+
+  vimKey(layers, "i")()
+  editor.insertText("a")
+  editor.onPaste({ preventDefault() {}, stopPropagation() {} })
+  editor.insertText("c")
+  vimKey(layers, "escape")()
+  assert(editor.plainText === "aBc", "typing across a paste boundary should accumulate in the prompt")
+  vimKey(layers, "u")()
+  vimKey(layers, "u")()
+  vimKey(layers, "u")()
+  assert(editor.plainText === "", "the session should undo back to the empty prompt")
+  vimKey(layers, ".")()
+  assert(editor.plainText === "aBc", "dot repeat should replay the full insert session across a paste boundary")
+  await cleanup?.()
+}
+
+{
+  const { layers, context, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  editor.onPaste = () => {
+    editor.insertText("X")
+  }
+  context.renderer.currentFocusedEditor = editor
+
+  vimKey(layers, "i")()
+  editor.onPaste({ preventDefault() {}, stopPropagation() {} })
+  editor.onPaste = () => {
+    editor.insertText("Y")
+  }
+  editor.onPaste({ preventDefault() {}, stopPropagation() {} })
+  vimKey(layers, "escape")()
+  vimKey(layers, "u")()
+  assert(editor.plainText === "X", "each paste should be its own undo boundary")
+  await cleanup?.()
+}
+
+{
+  const { layers, context, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  let resolveHostPaste: (() => void) | undefined
+  editor.onPaste = () =>
+    new Promise<void>((resolve) => {
+      resolveHostPaste = () => {
+        editor.insertText("BAR")
+        resolve()
+      }
+    })
+  context.renderer.currentFocusedEditor = editor
+
+  vimKey(layers, "i")()
+  editor.onPaste({ preventDefault() {}, stopPropagation() {} })
+  vimKey(layers, "escape")()
+  vimKey(layers, "u")()
+  assert(editor.plainText === "", "undo before the host paste settles must not consume a paste boundary")
+  resolveHostPaste?.()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert(editor.plainText === "BAR", "the settled host paste should land in the prompt")
+  vimKey(layers, "u")()
+  assert(editor.plainText === "", "the settled paste should be its own undo entry")
+  await cleanup?.()
+}
+
+{
+  const { layers, context, cleanup } = await setup()
+  const editor: any = fakeTextarea()
+  editor.onPaste = () => {
+    editor.insertText("P")
+  }
+  context.renderer.currentFocusedEditor = editor
+
+  vimKey(layers, "i")()
+  editor.onPaste({ preventDefault() {}, stopPropagation() {} })
+  vimKey(layers, "escape")()
+  vimKey(layers, "u")()
+  assert(editor.plainText === "", "a paste without typing should undo in one step")
+  vimKey(layers, "u")()
+  assert(editor.plainText === "", "a second undo must not eat anything beyond the lone paste entry")
+  await cleanup?.()
+}
+
+{
   const { layers, context } = await setup({ initial_mode: "normal", vim_langmap: { р: "h" } })
   const editor: any = fakeTextarea()
   editor.plainText = "word"
